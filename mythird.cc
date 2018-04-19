@@ -32,101 +32,70 @@ NS_LOG_COMPONENT_DEFINE ("ThirdScriptExample");
 class MyApp : public Application
 {
 public:
-
-  MyApp ();
-  virtual ~MyApp();
-
-  void Setup (Ptr<Socket> socket, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate);
+    MyApp (Ptr<Node> node, int id);
+    virtual ~MyApp();
 
 private:
-  virtual void StartApplication (void);
-  virtual void StopApplication (void);
+    virtual void StartApplication (void);
+    virtual void StopApplication (void);
 
-  void ScheduleTx (void);
-  void SendPacket (void);
+    void ScheduleAssociation(void);
+    void StartAssociation (void);
 
-  Ptr<Socket>     m_socket;
-  Address         m_peer;
-  uint32_t        m_packetSize;
-  uint32_t        m_nPackets;
-  DataRate        m_dataRate;
-  EventId         m_sendEvent;
-  bool            m_running;
-  uint32_t        m_packetsSent;
+    Ptr<Node> m_node;
+    int m_id;
+    EventId m_sendEvent;
+    bool m_running;
 };
 
-MyApp::MyApp ()
-  : m_socket (0),
-    m_peer (),
-    m_packetSize (0),
-    m_nPackets (0),
-    m_dataRate (0),
+MyApp::MyApp (Ptr<Node> node, int id)
+  : m_node(node),
+    m_id(id),
     m_sendEvent (),
-    m_running (false),
-    m_packetsSent (0)
+    m_running (false)
 {
+
 }
 
 MyApp::~MyApp()
 {
-  m_socket = 0;
-}
-
-void
-MyApp::Setup (Ptr<Socket> socket, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate)
-{
-  m_socket = socket;
-  m_peer = address;
-  m_packetSize = packetSize;
-  m_nPackets = nPackets;
-  m_dataRate = dataRate;
 }
 
 void
 MyApp::StartApplication (void)
 {
-  m_running = true;
-  m_packetsSent = 0;
-  m_socket->Bind ();
-  m_socket->Connect (m_peer);
-  SendPacket ();
+    m_running = true;
+    ScheduleAssociation ();
 }
 
 void
 MyApp::StopApplication (void)
 {
-  m_running = false;
+    m_running = false;
 
-  if (m_sendEvent.IsRunning ())
+    if (m_sendEvent.IsRunning ())
     {
-      Simulator::Cancel (m_sendEvent);
-    }
-
-  if (m_socket)
-    {
-      m_socket->Close ();
+        Simulator::Cancel (m_sendEvent);
     }
 }
 
 void
-MyApp::SendPacket (void)
+MyApp::StartAssociation (void)
 {
-  Ptr<Packet> packet = Create<Packet> (m_packetSize);
-  m_socket->Send (packet);
-
-  if (++m_packetsSent < m_nPackets)
-    {
-      ScheduleTx ();
-    }
+    Ptr<WifiNetDevice> device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
+    Ptr<StaWifiMac> mac = StaticCast<StaWifiMac>(device->GetMac());
+//    mac->StartActiveAssociation ();
+    mac->SetAttribute ("ActiveProbing",BooleanValue(true));
 }
 
+
 void
-MyApp::ScheduleTx (void)
+MyApp::ScheduleAssociation (void)
 {
-  if (m_running)
+    if (m_running)
     {
-      Time tNext (Seconds (m_packetSize * 8 / static_cast<double> (m_dataRate.GetBitRate ())));
-      m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacket, this);
+        Time tNext (MilliSeconds(m_id*100));
+        m_sendEvent = Simulator::Schedule (tNext, &MyApp::StartAssociation, this);
     }
 }
 
@@ -139,7 +108,6 @@ main (int argc, char *argv[])
   bool tracing = true;
 
   CommandLine cmd;
-//  cmd.AddValue ("nCsma", "Number of \"extra\" CSMA nodes/devices", nCsma);
   cmd.AddValue ("nWifi", "Number of wifi STA devices", nWifi);
   cmd.AddValue ("verbose", "Tell echo applications to log if true", verbose);
   cmd.AddValue ("tracing", "Enable pcap tracing", tracing);
@@ -157,9 +125,10 @@ main (int argc, char *argv[])
 
   if (verbose)
     {
-      LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
-      LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
+        LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
+        LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
     }
+  LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
 
   ns3::PacketMetadata::Enable();
 
@@ -193,8 +162,10 @@ main (int argc, char *argv[])
   NetDeviceContainer staDevices;
   staDevices = wifi.Install (phy, mac, wifiStaNodes);
 
+
   mac.SetType ("ns3::ApWifiMac",
-               "Ssid", SsidValue (ssid));
+               "Ssid", SsidValue (ssid),
+               "BeaconGeneration", BooleanValue(false));
 
   NetDeviceContainer apDevices;
   apDevices = wifi.Install (phy, mac, wifiApNode);
@@ -229,41 +200,40 @@ main (int argc, char *argv[])
   wifiInterfaces = address.Assign (staDevices);
   apInterface = address.Assign (apDevices);
 
-  uint16_t port = 9999;
-  UdpServerHelper server(port);
+//  uint16_t port = 9999;
+//  UdpServerHelper server(port);
 
-  ApplicationContainer serverApps = server.Install (wifiApNode);
-  serverApps.Start (Seconds (1));
-  serverApps.Stop (Seconds (10));
+//  ApplicationContainer serverApps = server.Install (wifiApNode);
+//  serverApps.Start (Seconds (1));
+//  serverApps.Stop (Seconds (10));
 
-  /*Ptr<Socket> UdpSocket = Socket::CreateSocket (nodes.Get (0), TcpSocketFactory::GetTypeId ());
-  Ptr<MyApp> app = CreateObject<MyApp> ();
-   app->Setup (UdpSocket, sinkAddress, 1040, 1000, DataRate ("1Mbps"));
-   nodes.Get (0)->AddApplication (app);
-   app->Start (Seconds (1));
-   app->Stop (Seconds (20));*/
+    Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (0),1);
+    wifiStaNodes.Get (0)->AddApplication (app1);
+    app1->SetStartTime (Seconds (1));
+    app1->SetStopTime (Seconds (20));
 
-  UdpClientHelper client1 (apInterface.GetAddress(0), port);
-  client1.SetAttribute ("MaxPackets", UintegerValue (1000));
-  client1.SetAttribute ("Interval", TimeValue (MilliSeconds (50)));
-  client1.SetAttribute ("PacketSize", UintegerValue (1024));
+    Ptr<MyApp> app2 = CreateObject<MyApp> (wifiStaNodes.Get (1),2);
+    wifiStaNodes.Get (1)->AddApplication (app2);
+    app2->SetStartTime (Seconds (1));
+    app2->SetStopTime (Seconds (20));
 
-  UdpClientHelper client2 (apInterface.GetAddress(0), port);
-  client2.SetAttribute ("MaxPackets", UintegerValue (1000));
-  client2.SetAttribute ("Interval", TimeValue (MilliSeconds (50)));
-  client2.SetAttribute ("PacketSize", UintegerValue (1024));
+//  UdpClientHelper client1 (apInterface.GetAddress(0), port);
+//  client1.SetAttribute ("MaxPackets", UintegerValue (1000));
+//  client1.SetAttribute ("Interval", TimeValue (MilliSeconds (50)));
+//  client1.SetAttribute ("PacketSize", UintegerValue (1024));
 
-  ApplicationContainer client1App = client1.Install (wifiStaNodes.Get(0));
-  client1App.Start (MilliSeconds (1000));
-  client1App.Stop (Seconds (10));
+//  UdpClientHelper client2 (apInterface.GetAddress(0), port);
+//  client2.SetAttribute ("MaxPackets", UintegerValue (1000));
+//  client2.SetAttribute ("Interval", TimeValue (MilliSeconds (50)));
+//  client2.SetAttribute ("PacketSize", UintegerValue (1024));
 
-  ApplicationContainer client2App = client2.Install (wifiStaNodes.Get(1));
-  client2App.Start (MilliSeconds (1050));
-  client2App.Stop (Seconds (10));
+//  ApplicationContainer client1App = client1.Install (wifiStaNodes.Get(0));
+//  client1App.Start (MilliSeconds (1000));
+//  client1App.Stop (Seconds (10));
 
-  std::string hello_str("Hello World");
-
-  Ptr<Packet> p = Create<Packet> ((const uint8_t*)hello_str.c_str (), hello_str.size ());
+//  ApplicationContainer client2App = client2.Install (wifiStaNodes.Get(1));
+//  client2App.Start (MilliSeconds (1050));
+//  client2App.Stop (Seconds (10));
 
   Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
@@ -272,15 +242,11 @@ main (int argc, char *argv[])
   if (tracing == true)
     {
 //      pointToPoint.EnablePcapAll ("third");
-      phy.EnablePcap ("third", apDevices.Get (0));
+//      phy.EnablePcap ("third", apDevices.Get (0));
 //      csma.EnablePcap ("third", csmaDevices.Get (0), true);
     }
 
-
-//  Simulator::Schedule(Seconds(1.0),&Ipv4::Send,(Ipv4*)(wifiInterfaces.Get (0).first.operator -> ()),p, wifiInterfaces.GetAddress (0), apInterface.GetAddress (0), ns3::UdpL4Protocol::PROT_NUMBER, );
-
   Simulator::Run ();
-//  wifiStaNodes.Get (1)->GetDevice (0)->Send (p, wifiApNode.Get (0)->GetDevice (0)->GetAddress (), ns3::TcpL4Protocol::PROT_NUMBER );
   Simulator::Destroy ();
   return 0;
 }
