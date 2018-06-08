@@ -24,6 +24,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-module.h"
 
+
 // Default Network Topology
 //
 //   Wifi 10.1.3.0
@@ -51,8 +52,8 @@ private:
 
     void ScheduleAssociation(void);
     void StartAssociation (void);
-    void ScheduleTx(void);
     void SendPacketTimed (void);
+    void ScheduleTx(void);
 
     Ptr<Socket>     m_socket;
     Address         m_peer;
@@ -91,6 +92,9 @@ MyApp::StartApplication (void)
 {
     m_running = true;
     ScheduleAssociation ();
+    if (m_socket->Bind ()!=0) NS_LOG_UNCOND("failed to bind");
+    m_socket->Connect (m_peer);
+    SendPacketTimed ();
 }
 
 void
@@ -102,6 +106,11 @@ MyApp::StopApplication (void)
     {
         Simulator::Cancel (m_sendEvent);
     }
+
+    if (m_socket)
+      {
+        m_socket->Close ();
+      }
 }
 
 void
@@ -134,29 +143,35 @@ MyApp::Setup (Ptr<Socket> socket, Address address, uint32_t packetSize, uint32_t
   m_dataRate = dataRate;
 }
 
+
 void
 MyApp::ScheduleTx (void)
 {
-  if (m_running)
-    { //change time value
-      //Time tNext (Seconds (m_packetSize * 8 / static_cast<double> (m_dataRate.GetBitRate ())));
-      Time tNext (MilliSeconds (50));
-      m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed, this);
+    if (m_running)
+    {
+        NS_LOG_UNCOND("Scheduling Tx");
+        Time tNext (MilliSeconds(50));
+        m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed,this);
     }
+    NS_LOG_UNCOND("Finished Scheduling");
 }
-
 
 void
 MyApp::SendPacketTimed (void)
 {
   Ptr<Packet> packet = Create<Packet> (m_packetSize);
+
   m_socket->Send (packet);
-  //change this if statement: create packetcnt var check if  >0 and keep schedule
-  if (m_nPackets>0 && m_packetsSent++<1)
+  NS_LOG_UNCOND("Sending");
+  if (m_nPackets>0)
     {
       ScheduleTx ();
     }
-  m_packetsSent=0;
+  else
+    {
+      m_socket->Close();
+    }
+  NS_LOG_UNCOND("Finished Sending");
 }
 
 
@@ -253,11 +268,12 @@ main (int argc, char *argv[])
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
   mobility.Install (wifiApNode);
 
+
   // Install Internet Stack
   InternetStackHelper stack;
   stack.Install (wifiApNode);
   stack.Install (wifiStaNodes);
-  stack.Install(p2pNodes);
+  stack.Install(p2pNodes.Get(1));
   Ipv4AddressHelper address;
   Ipv4InterfaceContainer wifiInterfaces;
   Ipv4InterfaceContainer apInterface;
@@ -271,17 +287,12 @@ main (int argc, char *argv[])
   Ipv4InterfaceContainer p2pInterfaces;
   p2pInterfaces = address.Assign (p2pDevices);
 
-//  uint16_t port = 9999;
-//  UdpServerHelper server(port);
 
-//  ApplicationContainer serverApps = server.Install (wifiApNode);
-//  serverApps.Start (Seconds (1));
-//  serverApps.Stop (Seconds (10));
 
-    // Create socket and source destination
+    // Create socket on destination
     uint16_t sinkPort = 8080;
-    Address sinkAddress (InetSocketAddress (apInterface.GetAddress (1), sinkPort));
-    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (Ipv4Address::GetAny (), sinkPort));
+    Address sinkAddress (InetSocketAddress (p2pInterfaces.GetAddress (1), sinkPort));
+    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (p2pInterfaces.GetAddress (1), sinkPort));
     ApplicationContainer sinkApps = packetSinkHelper.Install (p2pNodes.Get (1));
     sinkApps.Start (Seconds (0.));
     sinkApps.Stop (Seconds (20.));
@@ -291,7 +302,7 @@ main (int argc, char *argv[])
     Ptr<Socket> ns3UdpSocket2 = Socket::CreateSocket (wifiStaNodes.Get (1), UdpSocketFactory::GetTypeId ());
 
 
-    // Apps install with setup
+    // Apps install on STA nodes with setup
     Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (0),1);
     app1->Setup(ns3UdpSocket, sinkAddress, 200, 1, DataRate ("1Mbps"));
     wifiStaNodes.Get (0)->AddApplication (app1);
@@ -304,36 +315,17 @@ main (int argc, char *argv[])
     app2->SetStartTime (Seconds (1));
     app2->SetStopTime (Seconds (20));
 
-//  UdpClientHelper client1 (apInterface.GetAddress(0), port);
-//  client1.SetAttribute ("MaxPackets", UintegerValue (1000));
-//  client1.SetAttribute ("Interval", TimeValue (MilliSeconds (50)));
-//  client1.SetAttribute ("PacketSize", UintegerValue (1024));
+    Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
-//  UdpClientHelper client2 (apInterface.GetAddress(0), port);
-//  client2.SetAttribute ("MaxPackets", UintegerValue (1000));
-//  client2.SetAttribute ("Interval", TimeValue (MilliSeconds (50)));
-//  client2.SetAttribute ("PacketSize", UintegerValue (1024));
 
-//  ApplicationContainer client1App = client1.Install (wifiStaNodes.Get(0));
-//  client1App.Start (MilliSeconds (1000));
-//  client1App.Stop (Seconds (10));
+    if (tracing == true)
+      {
+        //      pointToPoint.EnablePcapAll ("third");
+        //      phy.EnablePcap ("third", apDevices.Get (0));
+        //      csma.EnablePcap ("third", csmaDevices.Get (0), true);
+      }
 
-//  ApplicationContainer client2App = client2.Install (wifiStaNodes.Get(1));
-//  client2App.Start (MilliSeconds (1050));
-//  client2App.Stop (Seconds (10));
-
-  Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
-
-  Simulator::Stop (Seconds (10.0));
-
-  if (tracing == true)
-    {
-//      pointToPoint.EnablePcapAll ("third");
-//      phy.EnablePcap ("third", apDevices.Get (0));
-//      csma.EnablePcap ("third", csmaDevices.Get (0), true);
-    }
-
-  Simulator::Run ();
-  Simulator::Destroy ();
-  return 0;
+    Simulator::Run ();
+    Simulator::Destroy ();
+    return 0;
 }
