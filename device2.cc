@@ -68,9 +68,7 @@ private:
 };
 
 MyApp::MyApp (Ptr<Node> node, int id)
-  :
-    m_socket (0),
-    m_peer (),
+  : m_peer (),
     m_packetSize (0),
     m_nPackets (0),
     m_dataRate (0),
@@ -79,7 +77,9 @@ MyApp::MyApp (Ptr<Node> node, int id)
     m_id(id),
     m_sendEvent (),
     m_running (false)
+
 {
+  m_socket=Socket::CreateSocket (node, UdpSocketFactory::GetTypeId ());
 
 }
 
@@ -88,13 +88,23 @@ MyApp::~MyApp()
 }
 
 void
+MyApp::Setup (Ptr<Socket> socket, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate)
+{
+  m_socket = socket;
+  m_peer = address;
+  m_packetSize = packetSize;
+  m_nPackets = nPackets;
+  m_dataRate = dataRate;
+}
+
+
+void
 MyApp::StartApplication (void)
 {
     m_running = true;
     ScheduleAssociation ();
-    if (m_socket->Bind ()!=0) NS_LOG_UNCOND("failed to bind");
-    m_socket->Connect (m_peer);
-    SendPacketTimed ();
+
+    ScheduleTx ();
 }
 
 void
@@ -131,17 +141,9 @@ MyApp::ScheduleAssociation (void)
         Time tNext (MilliSeconds(m_id*100));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::StartAssociation, this);
     }
+    NS_LOG_UNCOND("Association done");
 }
 
-void
-MyApp::Setup (Ptr<Socket> socket, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate)
-{
-  m_socket = socket;
-  m_peer = address;
-  m_packetSize = packetSize;
-  m_nPackets = nPackets;
-  m_dataRate = dataRate;
-}
 
 
 void
@@ -150,28 +152,26 @@ MyApp::ScheduleTx (void)
     if (m_running)
     {
         NS_LOG_UNCOND("Scheduling Tx");
-        Time tNext (MilliSeconds(50));
+        Time tNext (MilliSeconds(m_id*100+10));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed,this);
     }
-    NS_LOG_UNCOND("Finished Scheduling");
+    NS_LOG_UNCOND("Sent packet");
 }
 
 void
 MyApp::SendPacketTimed (void)
 {
   Ptr<Packet> packet = Create<Packet> (m_packetSize);
-
   m_socket->Send (packet);
   NS_LOG_UNCOND("Sending");
-  if (m_nPackets>0)
+  if (m_nPackets==0)
     {
-      ScheduleTx ();
+     m_socket->Close();
+     NS_LOG_UNCOND("Number of Packets is 0 closing socket");
+
     }
-  else
-    {
-      m_socket->Close();
-    }
-  NS_LOG_UNCOND("Finished Sending");
+
+  NS_LOG_UNCOND("Finished sending");
 }
 
 
@@ -181,7 +181,7 @@ main (int argc, char *argv[])
 {
   bool verbose = true;
 //  uint32_t nCsma = 3;
-  uint32_t nWifi = 3;
+  uint32_t nWifi = 2;
   bool tracing = true;
 
   CommandLine cmd;
@@ -204,7 +204,8 @@ main (int argc, char *argv[])
     {
 
     }
-  //LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
+  LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
+  LogComponentEnable ("ApWifiMac", LOG_LEVEL_INFO);
   LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
   ns3::PacketMetadata::Enable();
 
@@ -235,7 +236,7 @@ main (int argc, char *argv[])
   Ssid ssid = Ssid ("ns-3-ssid");
   mac.SetType ("ns3::StaWifiMac",
                "Ssid", SsidValue (ssid),
-               "ActiveProbing", BooleanValue (false));
+               "ActiveProbing", BooleanValue (false),"MaxMissedBeacons",UintegerValue(1000));
 
   // Install STA devices
   NetDeviceContainer staDevices;
@@ -244,7 +245,7 @@ main (int argc, char *argv[])
 
   mac.SetType ("ns3::ApWifiMac",
                "Ssid", SsidValue (ssid),
-               "BeaconGeneration", BooleanValue(false));
+               "BeaconGeneration", BooleanValue(false),"BeaconInterval",TimeValue(Days(1)));
 
   // Install AP device
   NetDeviceContainer apDevices;
@@ -297,10 +298,9 @@ main (int argc, char *argv[])
     sinkApps.Start (Seconds (0.));
     sinkApps.Stop (Seconds (20.));
 
-    //Install socket on all transmitter devices
+    //Create socket to be installed in app on setup on all transmitter devices
     Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (0), UdpSocketFactory::GetTypeId ());
     Ptr<Socket> ns3UdpSocket2 = Socket::CreateSocket (wifiStaNodes.Get (1), UdpSocketFactory::GetTypeId ());
-
 
     // Apps install on STA nodes with setup
     Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (0),1);
