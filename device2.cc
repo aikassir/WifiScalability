@@ -236,7 +236,7 @@ main (int argc, char *argv[])
   Ssid ssid = Ssid ("ns-3-ssid");
   mac.SetType ("ns3::StaWifiMac",
                "Ssid", SsidValue (ssid),
-               "ActiveProbing", BooleanValue (false),"MaxMissedBeacons",UintegerValue(1000));
+               "ActiveProbing", BooleanValue (false));
 
   // Install STA devices
   NetDeviceContainer staDevices;
@@ -316,6 +316,8 @@ main (int argc, char *argv[])
     app2->SetStopTime (Seconds (20));
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
+
+        Simulator::Stop (Seconds (20.0));
 
 
     if (tracing == true)

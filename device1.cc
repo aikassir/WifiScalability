@@ -30,15 +30,19 @@
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("ThirdScriptExample");
+NS_LOG_COMPONENT_DEFINE ("device1");
 
 class apApp : public Application
 {
 public:
-    apApp(Ptr<Node> node);
+    apApp();
+    ~apApp(){}
 
 private:
-    Ptr<Node> m_node;
+
+    virtual void StartApplication (void);
+    virtual void StopApplication (void){}
+
     Ptr<Socket> m_socket;
 
     Ptr<WifiNetDevice> m_device;
@@ -52,34 +56,38 @@ private:
     void RequestId(Ptr<Socket> socket);
 };
 
-apApp::apApp (Ptr<Node> node)
-  : m_node(node)
+apApp::apApp ()
+{
+}
+
+void apApp::StartApplication ()
 {
     m_device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
     m_mac = StaticCast<ApWifiMac>(m_device->GetMac());
-
-    m_socket=Socket::CreateSocket (node, TcpSocketFactory::GetTypeId ());
-    m_socket->SetRecvCallback(MakeCallback(&apApp::RequestId,this));
-
     uint16_t apPort = 9998;
     Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
+    m_socket=Socket::CreateSocket (m_node, TcpSocketFactory::GetTypeId ());
+    m_socket->SetAcceptCallback (MakeNullCallback<bool, Ptr<Socket>, const Address &> (), MakeCallback (&apApp::ConnectionAccepted, this));
+    m_socket->SetRecvCallback (MakeCallback(&apApp::RequestId, this));
     m_socket->Bind (apAddress);
     m_socket->Listen ();
-    m_socket->SetAcceptCallback (MakeCallback (&apApp::ConnectionRequested, this), MakeCallback (&apApp::ConnectionAccepted, this));
-
 }
 
 bool apApp::ConnectionRequested (Ptr<Socket> socket, const Address& address)
 {
-  NS_LOG_FUNCTION (this << socket << address);
-  NS_LOG_DEBUG (Simulator::Now () << " Socket = " << socket << " " << " Server: ConnectionRequested");
+//  NS_LOG_INFO (this << socket << address);
+  NS_LOG_INFO (Simulator::Now () << " Socket = " << socket << " " << " Server:"
+                                                                     " ConnectionRequested");
+  socket->SetRecvCallback (MakeCallback (&apApp::RequestId, this));
   return true;
 }
 
-void apApp::ConnectionAccepted (Ptr<Socket> socket, const Address & addr)
+void apApp::ConnectionAccepted (Ptr<Socket> socket, const Address & address)
 {
-  NS_LOG_INFO ("Connecting ...");
+  NS_LOG_INFO ("Connection accepted.");
   socket->SetRecvCallback (MakeCallback (&apApp::RequestId, this));
+  m_recvSocketList.push_back (socket);
+  //Ptr<Socket> new_socket = Socket::CreateSocket(GetNode(), TcpSocketFatory::GetTypeId());
 }
 
 void apApp::RequestId (Ptr<Socket> socket)
@@ -108,7 +116,7 @@ class staApp : public Application
 {
 public:
     staApp (Ptr<Node> node, int id);
-    virtual ~staApp();
+    virtual ~staApp(){}
 
 private:
     virtual void StartApplication (void);
@@ -118,7 +126,9 @@ private:
     void StartAssociation (void);
     void StopAssociation (void);
 
-    void RequestId(void);
+    void Connect();
+    void ScheduleRequestId(Ptr<Socket> socket);
+    void RequestId(Ptr<Socket> socket);
     void UpdateId(Ptr<Socket> socket);
 
     Ptr<Node> m_node;
@@ -139,12 +149,10 @@ staApp::staApp (Ptr<Node> node, int id)
 {
     m_device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
     m_mac = StaticCast<StaWifiMac>(m_device->GetMac());   
-    m_mac->SetLinkUpCallback (MakeCallback(&staApp::RequestId,this)); // setup callback for
+    m_mac->SetLinkUpCallback (MakeCallback(&staApp::Connect,this)); // setup callback for requesting id
     m_socket=Socket::CreateSocket (node, TcpSocketFactory::GetTypeId ());
-}
-
-staApp::~staApp()
-{
+    m_socket->SetConnectCallback (MakeCallback(&staApp::ScheduleRequestId,this),MakeNullCallback<void, Ptr<Socket> >());
+    m_socket->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
 }
 
 void
@@ -178,14 +186,23 @@ void staApp::ScheduleAssociation (void)
     }
 }
 
-void staApp::RequestId (void)
+void staApp::Connect()
 {
-    Ptr<Packet> packet = Create<Packet> ();
     // connect
     uint16_t apPort = 9998;
     Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
-    m_socket->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
     m_socket->Connect (apAddress);
+}
+
+void staApp::ScheduleRequestId (Ptr<Socket> socket)
+{
+    Time tNext (MilliSeconds(1000));
+    Simulator::Schedule (tNext, &staApp::RequestId, this, socket);
+}
+
+void staApp::RequestId (Ptr<Socket> socket)
+{
+    Ptr<Packet> packet = Create<Packet> ();
     m_socket->Send (packet);
 }
 
@@ -223,6 +240,7 @@ int main (int argc, char *argv[])
         LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
         LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
         LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
+        LogComponentEnable ("device1", LOG_LEVEL_INFO);
     }
 
     ns3::PacketMetadata::Enable();
@@ -300,7 +318,7 @@ int main (int argc, char *argv[])
     uint16_t apPort = 9998;
     Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
 
-    Ptr<apApp> apApp1 = CreateObject<apApp>(wifiApNode.Get(0));
+    Ptr<apApp> apApp1 = CreateObject<apApp>();
     wifiApNode.Get(0)->AddApplication(apApp1);
     apApp1->SetStartTime(Seconds(1));
     apApp1->SetStopTime(Seconds(20));
