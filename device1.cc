@@ -65,35 +65,23 @@ void apApp::StartApplication ()
     m_device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
     m_mac = StaticCast<ApWifiMac>(m_device->GetMac());
     uint16_t apPort = 9998;
-    Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
-    m_socket=Socket::CreateSocket (m_node, TcpSocketFactory::GetTypeId ());
-    m_socket->SetAcceptCallback (MakeNullCallback<bool, Ptr<Socket>, const Address &> (), MakeCallback (&apApp::ConnectionAccepted, this));
+    Address apAddress (InetSocketAddress (Ipv4Address::GetAny (), apPort));
+    m_socket=Socket::CreateSocket (m_node, UdpSocketFactory::GetTypeId ());
     m_socket->SetRecvCallback (MakeCallback(&apApp::RequestId, this));
     m_socket->Bind (apAddress);
-    m_socket->Listen ();
-}
-
-bool apApp::ConnectionRequested (Ptr<Socket> socket, const Address& address)
-{
-//  NS_LOG_INFO (this << socket << address);
-  NS_LOG_INFO (Simulator::Now () << " Socket = " << socket << " " << " Server:"
-                                                                     " ConnectionRequested");
-  socket->SetRecvCallback (MakeCallback (&apApp::RequestId, this));
-  return true;
-}
-
-void apApp::ConnectionAccepted (Ptr<Socket> socket, const Address & address)
-{
-  NS_LOG_INFO ("Connection accepted.");
-  socket->SetRecvCallback (MakeCallback (&apApp::RequestId, this));
-  m_recvSocketList.push_back (socket);
-  //Ptr<Socket> new_socket = Socket::CreateSocket(GetNode(), TcpSocketFatory::GetTypeId());
 }
 
 void apApp::RequestId (Ptr<Socket> socket)
 {
-    Address addr;
-    socket->GetPeerName (addr);
+    Ptr<Packet> receivedPacket = socket->Recv (std::numeric_limits<uint32_t>::max (), 0);
+    uint8_t *buffer = new uint8_t[receivedPacket->GetSize ()];
+    receivedPacket->CopyData(buffer, receivedPacket->GetSize ());
+    std::string s = std::string((char*)buffer);
+    std::cout << s << std::endl;
+    Ptr<Packet> copiedPacket = receivedPacket->Copy ();
+    Ipv4Header iph;
+    copiedPacket->RemoveHeader (iph);
+    Address addr(InetSocketAddress(iph.GetSource (), 9997));
 
     // get next id
     int id=1;
@@ -108,7 +96,7 @@ void apApp::RequestId (Ptr<Socket> socket)
     // send id
     std::string sid=boost::lexical_cast<std::string>(id);
     Ptr<Packet> packet = Create<Packet> ((const uint8_t*)sid.c_str (),sid.size());
-    socket->Send(packet);
+    socket->SendTo(packet,0,addr);
 }
 
 // create custom application to replicate WiFi module firmware
@@ -126,9 +114,9 @@ private:
     void StartAssociation (void);
     void StopAssociation (void);
 
-    void Connect();
-    void ScheduleRequestId(Ptr<Socket> socket);
-    void RequestId(Ptr<Socket> socket);
+//    void Connect();
+    void ScheduleRequestId();
+    void RequestId();
     void UpdateId(Ptr<Socket> socket);
 
     Ptr<Node> m_node;
@@ -149,10 +137,12 @@ staApp::staApp (Ptr<Node> node, int id)
 {
     m_device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
     m_mac = StaticCast<StaWifiMac>(m_device->GetMac());   
-    m_mac->SetLinkUpCallback (MakeCallback(&staApp::Connect,this)); // setup callback for requesting id
-    m_socket=Socket::CreateSocket (node, TcpSocketFactory::GetTypeId ());
-    m_socket->SetConnectCallback (MakeCallback(&staApp::ScheduleRequestId,this),MakeNullCallback<void, Ptr<Socket> >());
+    m_mac->SetLinkUpCallback (MakeCallback(&staApp::ScheduleRequestId,this)); // setup callback for requesting id
+    m_socket=Socket::CreateSocket (node, UdpSocketFactory::GetTypeId ());
     m_socket->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
+    uint16_t staPort = 9997;
+    Address staAddress (InetSocketAddress (Ipv4Address::GetAny (), staPort));
+    m_socket->Bind(staAddress);
 }
 
 void
@@ -186,24 +176,26 @@ void staApp::ScheduleAssociation (void)
     }
 }
 
-void staApp::Connect()
+//void staApp::Connect()
+//{
+//    // connect
+//    uint16_t apPort = 9998;
+//    Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
+//    m_socket->Connect (apAddress);
+//}
+
+void staApp::ScheduleRequestId()
 {
-    // connect
+    Time tNext (Seconds(2));
+    Simulator::Schedule (tNext, &staApp::RequestId, this);
+}
+
+void staApp::RequestId ()
+{
+    Ptr<Packet> packet = Create<Packet> (64);
     uint16_t apPort = 9998;
     Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
-    m_socket->Connect (apAddress);
-}
-
-void staApp::ScheduleRequestId (Ptr<Socket> socket)
-{
-    Time tNext (MilliSeconds(1000));
-    Simulator::Schedule (tNext, &staApp::RequestId, this, socket);
-}
-
-void staApp::RequestId (Ptr<Socket> socket)
-{
-    Ptr<Packet> packet = Create<Packet> ();
-    m_socket->Send (packet);
+    m_socket->SendTo(packet,0,apAddress);
 }
 
 void staApp::UpdateId(Ptr<Socket> socket)
@@ -314,9 +306,6 @@ int main (int argc, char *argv[])
     //  ApplicationContainer serverApps = server.Install (wifiApNode);
     //  serverApps.Start (Seconds (1));
     //  serverApps.Stop (Seconds (10));
-
-    uint16_t apPort = 9998;
-    Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
 
     Ptr<apApp> apApp1 = CreateObject<apApp>();
     wifiApNode.Get(0)->AddApplication(apApp1);
