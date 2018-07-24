@@ -13,7 +13,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-
+#include <iostream>
 #include "ns3/core-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/network-module.h"
@@ -23,7 +23,8 @@
 #include "ns3/csma-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-module.h"
-
+#include "ns3/flow-monitor.h"
+#include "ns3/flow-monitor-helper.h"
 
 // Default Network Topology
 //
@@ -70,7 +71,7 @@ private:
 MyApp::MyApp (Ptr<Node> node, int id)
   : m_peer (),
     m_packetSize (0),
-    m_nPackets (0),
+    m_nPackets (1),
     m_dataRate (0),
     m_packetsSent (0),
     m_node(node),
@@ -152,7 +153,7 @@ MyApp::ScheduleTx (void)
     if (m_running)
     {
         NS_LOG_UNCOND("Scheduling Tx");
-        Time tNext (MilliSeconds(m_id*100+10));
+        Time tNext (Simulator::Now().GetMilliSeconds() + MilliSeconds(m_id*100+10));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed,this);
     }
     NS_LOG_UNCOND("Sent packet");
@@ -175,13 +176,26 @@ MyApp::SendPacketTimed (void)
 }
 
 
+//static void RxPacket(Ptr<const Packet> p){
+//  NS_LOG_UNCOND("Received packet at: "<< Simulator::Now().GetMilliSeconds());
+
+//}
+
+static void TxDrop(Ptr<const Packet> p){
+  NS_LOG_UNCOND("Drop at: "<<Simulator::Now().GetMilliSeconds());
+}
+
+
+static void ApRx(Ptr<const Packet> p){
+  NS_LOG_UNCOND("Drop at AP at: "<<Simulator::Now().GetMilliSeconds());
+}
 
 int 
 main (int argc, char *argv[])
 {
   bool verbose = true;
 //  uint32_t nCsma = 3;
-  uint32_t nWifi = 2;
+  uint32_t nWifi = 3;
   bool tracing = true;
 
   CommandLine cmd;
@@ -204,26 +218,27 @@ main (int argc, char *argv[])
     {
 
     }
-  LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
-  LogComponentEnable ("ApWifiMac", LOG_LEVEL_INFO);
-  LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
+  //LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
+  //LogComponentEnable ("ApWifiMac", LOG_LEVEL_INFO);
+  LogComponentEnable ("Socket", LOG_LEVEL_INFO);
   ns3::PacketMetadata::Enable();
 
-  // Create p2p nodes: AP
-  NodeContainer p2pNodes;
-  p2pNodes.Create (2);
+//  // Create p2p nodes: AP
+//  NodeContainer p2pNodes;
+//  p2pNodes.Create (2);
 
-  PointToPointHelper pointToPoint;
-  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-  pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
+//  PointToPointHelper pointToPoint;
+//  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
+//  pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
 
-  NetDeviceContainer p2pDevices;
-  p2pDevices = pointToPoint.Install (p2pNodes);
+//  NetDeviceContainer p2pDevices;
+//  p2pDevices = pointToPoint.Install (p2pNodes);
 
   // WiFi nodes
   NodeContainer wifiStaNodes;
-  wifiStaNodes.Create (nWifi);
-  NodeContainer wifiApNode = p2pNodes.Get (0);
+  wifiStaNodes.Create (nWifi-1);
+  NodeContainer wifiApNode;
+  wifiApNode.Create(1);
 
   YansWifiChannelHelper channel = YansWifiChannelHelper::Default ();
   YansWifiPhyHelper phy = YansWifiPhyHelper::Default ();
@@ -236,7 +251,7 @@ main (int argc, char *argv[])
   Ssid ssid = Ssid ("ns-3-ssid");
   mac.SetType ("ns3::StaWifiMac",
                "Ssid", SsidValue (ssid),
-               "ActiveProbing", BooleanValue (false));
+               "ActiveProbing", BooleanValue (false),"MaxMissedBeacons",UintegerValue(1000));
 
   // Install STA devices
   NetDeviceContainer staDevices;
@@ -274,7 +289,7 @@ main (int argc, char *argv[])
   InternetStackHelper stack;
   stack.Install (wifiApNode);
   stack.Install (wifiStaNodes);
-  stack.Install(p2pNodes.Get(1));
+//  stack.Install(p2pNodes.Get(1));
   Ipv4AddressHelper address;
   Ipv4InterfaceContainer wifiInterfaces;
   Ipv4InterfaceContainer apInterface;
@@ -284,41 +299,49 @@ main (int argc, char *argv[])
   wifiInterfaces = address.Assign (staDevices);
   apInterface = address.Assign (apDevices);
 
-  address.SetBase ("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer p2pInterfaces;
-  p2pInterfaces = address.Assign (p2pDevices);
+//  address.SetBase ("10.1.1.0", "255.255.255.0");
+//  Ipv4InterfaceContainer p2pInterfaces;
+//  p2pInterfaces = address.Assign (p2pDevices);
 
+    // Tracing callbacks
+//    Ptr<PointToPointNetDevice> server_dev = StaticCast<PointToPointNetDevice>(p2pDevices.Get (1));
+//    server_dev->TraceConnectWithoutContext("MacRx",MakeCallback(&RxPacket));
+    Ptr<WifiNetDevice> stawifidev = StaticCast<WifiNetDevice>(staDevices.Get (0));
+    Ptr<WifiMac> nodemac1 = stawifidev->GetMac();
+    nodemac1->TraceConnectWithoutContext("MacTx",MakeCallback(&TxDrop));
+    Ptr<WifiNetDevice> apwifidev = StaticCast<WifiNetDevice>(apDevices.Get (0));
+    Ptr<WifiMac> apmac = apwifidev->GetMac();
+    apmac->TraceConnectWithoutContext("MacPromiscRx",MakeCallback(&ApRx));
+    NS_LOG_UNCOND("BLA");
 
-
-    // Create socket on destination
+    // Create packet sink on destination
     uint16_t sinkPort = 8080;
-    Address sinkAddress (InetSocketAddress (p2pInterfaces.GetAddress (1), sinkPort));
-    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (p2pInterfaces.GetAddress (1), sinkPort));
-    ApplicationContainer sinkApps = packetSinkHelper.Install (p2pNodes.Get (1));
+    Address sinkAddress (InetSocketAddress (wifiInterfaces.GetAddress (0), sinkPort));
+    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (wifiInterfaces.GetAddress (0), sinkPort));
+    ApplicationContainer sinkApps = packetSinkHelper.Install (wifiStaNodes.Get (0));
     sinkApps.Start (Seconds (0.));
     sinkApps.Stop (Seconds (20.));
 
     //Create socket to be installed in app on setup on all transmitter devices
-    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (0), UdpSocketFactory::GetTypeId ());
-    Ptr<Socket> ns3UdpSocket2 = Socket::CreateSocket (wifiStaNodes.Get (1), UdpSocketFactory::GetTypeId ());
+//    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (0), UdpSocketFactory::GetTypeId ());
+    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (1), UdpSocketFactory::GetTypeId ());
 
     // Apps install on STA nodes with setup
-    Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (0),1);
+    Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (1),1);
     app1->Setup(ns3UdpSocket, sinkAddress, 200, 1, DataRate ("1Mbps"));
-    wifiStaNodes.Get (0)->AddApplication (app1);
+    wifiStaNodes.Get (1)->AddApplication (app1);
     app1->SetStartTime (Seconds (1));
     app1->SetStopTime (Seconds (20));
 
-    Ptr<MyApp> app2 = CreateObject<MyApp> (wifiStaNodes.Get (1),2);
-    app1->Setup(ns3UdpSocket2, sinkAddress, 200, 1, DataRate ("1Mbps"));
-    wifiStaNodes.Get (1)->AddApplication (app2);
-    app2->SetStartTime (Seconds (1));
-    app2->SetStopTime (Seconds (20));
+//    Ptr<MyApp> app2 = CreateObject<MyApp> (wifiStaNodes.Get (1),2);
+//    app1->Setup(ns3UdpSocket2, sinkAddress, 200, 1, DataRate ("1Mbps"));
+//    wifiStaNodes.Get (1)->AddApplication (app2);
+//    app2->SetStartTime (Seconds (1));
+//    app2->SetStopTime (Seconds (20));
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
-        Simulator::Stop (Seconds (20.0));
-
+    Simulator::Stop (Seconds (10.0));
 
     if (tracing == true)
       {
@@ -327,7 +350,13 @@ main (int argc, char *argv[])
         //      csma.EnablePcap ("third", csmaDevices.Get (0), true);
       }
 
+    // Flow monitor
+    Ptr<FlowMonitor> flowmonitor;
+    FlowMonitorHelper flowhelper;
+    flowmonitor = flowhelper.InstallAll();
+
     Simulator::Run ();
+    flowmonitor->SerializeToXmlFile("flow.xml",true,true);
     Simulator::Destroy ();
     return 0;
 }
