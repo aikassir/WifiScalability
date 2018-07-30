@@ -73,11 +73,18 @@ void apApp::StartApplication ()
 
 void apApp::RequestId (Ptr<Socket> socket)
 {
-    Ptr<Packet> receivedPacket = socket->Recv (std::numeric_limits<uint32_t>::max (), 0);
-    uint8_t *buffer = new uint8_t[receivedPacket->GetSize ()];
-    receivedPacket->CopyData(buffer, receivedPacket->GetSize ());
-    std::string s = std::string((char*)buffer);
-    std::cout << s << std::endl;
+    Ptr<Packet> receivedPacket;
+    receivedPacket = socket->Recv();
+    Packet::EnablePrinting ();
+    receivedPacket->Print(std::cout);
+    std::string s;
+    s.resize (receivedPacket->GetSize());
+    receivedPacket->CopyData((uint8_t*)s.data (), receivedPacket->GetSize ());
+
+    for(unsigned int i=0; i<s.size (); i++)
+    {
+        std::cout << (unsigned int)s[i] << std::endl;
+    }
     Ptr<Packet> copiedPacket = receivedPacket->Copy ();
     Ipv4Header iph;
     copiedPacket->RemoveHeader (iph);

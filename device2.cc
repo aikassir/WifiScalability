@@ -80,7 +80,7 @@ MyApp::MyApp (Ptr<Node> node, int id)
     m_running (false)
 
 {
-  m_socket=Socket::CreateSocket (node, UdpSocketFactory::GetTypeId ());
+  //m_socket=Socket::CreateSocket (node, UdpSocketFactory::GetTypeId ());
 
 }
 
@@ -153,7 +153,7 @@ MyApp::ScheduleTx (void)
     if (m_running)
     {
         NS_LOG_UNCOND("Scheduling Tx");
-        Time tNext (Simulator::Now().GetMilliSeconds() + MilliSeconds(m_id*100+10));
+        Time tNext (MilliSeconds(m_id*100+1000));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed,this);
     }
     NS_LOG_UNCOND("Sent packet");
@@ -163,7 +163,8 @@ void
 MyApp::SendPacketTimed (void)
 {
   Ptr<Packet> packet = Create<Packet> (m_packetSize);
-  m_socket->Send (packet);
+  m_socket->Bind ();
+  m_socket->SendTo(packet,0,m_peer);
   NS_LOG_UNCOND("Sending");
   if (m_nPackets==0)
     {
@@ -221,6 +222,7 @@ main (int argc, char *argv[])
   //LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
   //LogComponentEnable ("ApWifiMac", LOG_LEVEL_INFO);
   LogComponentEnable ("Socket", LOG_LEVEL_INFO);
+   LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
   ns3::PacketMetadata::Enable();
 
 //  // Create p2p nodes: AP
@@ -316,19 +318,19 @@ main (int argc, char *argv[])
 
     // Create packet sink on destination
     uint16_t sinkPort = 8080;
-    Address sinkAddress (InetSocketAddress (wifiInterfaces.GetAddress (0), sinkPort));
-    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (wifiInterfaces.GetAddress (0), sinkPort));
-    ApplicationContainer sinkApps = packetSinkHelper.Install (wifiStaNodes.Get (0));
+    Address sinkAddress (InetSocketAddress (apInterface.GetAddress (0), sinkPort));
+    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (apInterface.GetAddress (0), sinkPort));
+    ApplicationContainer sinkApps = packetSinkHelper.Install (wifiApNode.Get (0));
     sinkApps.Start (Seconds (0.));
     sinkApps.Stop (Seconds (20.));
 
     //Create socket to be installed in app on setup on all transmitter devices
 //    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (0), UdpSocketFactory::GetTypeId ());
-    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (1), UdpSocketFactory::GetTypeId ());
+    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiApNode.Get (0), UdpSocketFactory::GetTypeId ());
 
     // Apps install on STA nodes with setup
-    Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (1),1);
-    app1->Setup(ns3UdpSocket, sinkAddress, 200, 1, DataRate ("1Mbps"));
+    Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (0),1);
+    app1->Setup(ns3UdpSocket, sinkAddress, 1000, 1, DataRate ("1Mbps"));
     wifiStaNodes.Get (1)->AddApplication (app1);
     app1->SetStartTime (Seconds (1));
     app1->SetStopTime (Seconds (20));
