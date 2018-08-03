@@ -73,22 +73,23 @@ void apApp::StartApplication ()
 
 void apApp::RequestId (Ptr<Socket> socket)
 {
+    Address addr;
     Ptr<Packet> receivedPacket;
-    receivedPacket = socket->Recv();
-    Packet::EnablePrinting ();
-    receivedPacket->Print(std::cout);
-    std::string s;
-    s.resize (receivedPacket->GetSize());
-    receivedPacket->CopyData((uint8_t*)s.data (), receivedPacket->GetSize ());
+    receivedPacket = socket->RecvFrom(addr);
+//    Packet::EnablePrinting ();
+//    receivedPacket->Print(std::cout);
+//    std::string s;
+//    s.resize (receivedPacket->GetSize());
+//    receivedPacket->CopyData((uint8_t*)s.data (), receivedPacket->GetSize ());
 
-    for(unsigned int i=0; i<s.size (); i++)
-    {
-        std::cout << (unsigned int)s[i] << std::endl;
-    }
-    Ptr<Packet> copiedPacket = receivedPacket->Copy ();
-    Ipv4Header iph;
-    copiedPacket->RemoveHeader (iph);
-    Address addr(InetSocketAddress(iph.GetSource (), 9997));
+//    for(unsigned int i=0; i<s.size (); i++)
+//    {
+//        std::cout << (unsigned int)s[i] << std::endl;
+//    }
+//    Ptr<Packet> copiedPacket = receivedPacket->Copy ();
+//    Ipv4Header iph;
+//    copiedPacket->RemoveHeader (iph);
+//    Address addr(InetSocketAddress(iph.GetSource (), 9997));
 
     // get next id
     int id=1;
@@ -208,14 +209,15 @@ void staApp::RequestId ()
 void staApp::UpdateId(Ptr<Socket> socket)
 {
     Ptr<Packet> packet=socket->Recv ();
-    std::string str=packet->ToString ();
-    m_id=boost::lexical_cast<int>(str);
+    std::ostringstream ostr;
+    packet->CopyData(&ostr,packet->GetSize ());
+    m_id=boost::lexical_cast<int>(ostr.str ());
 }
 
 int main (int argc, char *argv[])
 {
     bool verbose = true;
-    uint32_t nWifi = 3;
+    uint32_t nWifi = 2;
     bool tracing = true;
 
     CommandLine cmd;
@@ -224,6 +226,8 @@ int main (int argc, char *argv[])
     cmd.AddValue ("tracing", "Enable pcap tracing", tracing);
 
     cmd.Parse (argc,argv);
+
+    Packet::EnablePrinting ();
 
     // Check for valid number of csma or wifi nodes
     // 250 should be enough, otherwise IP addresses
