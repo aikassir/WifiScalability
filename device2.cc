@@ -57,6 +57,7 @@ private:
     void StartAssociation (void);
     void SendPacketTimed (void);
     void ScheduleTx(void);
+    void SetRate(void);
 
     Ptr<Socket>     m_socket;
     Address         m_peer;
@@ -184,7 +185,10 @@ MyApp::SendPacketTimed (void)
     }
 }
 
-
+//void SetRate (void)
+//{
+//  Config::Set("NodeList/*/DeviceList/*$ns3::WifiNetDevice/DataRate",StringValue(DataRate("3Mbps")));
+//}
  //static void RxPacket(Ptr<const Packet> p){
  //  NS_LOG_UNCOND("Received packet at: "<< Simulator::Now().GetMilliSeconds());
 
@@ -280,21 +284,6 @@ main (int argc, char *argv[])
   apDevices = wifi.Install (phy, mac, wifiApNode);
 
 
-  /***** TDMA MAC *****/
- /*
-  Config::SetDefault ("ns3::SimpleWirelessChannel::MaxRange", DoubleValue (400.0));
-
-  TdmaHelper tdma = TdmaHelper ("tdma-slots-device2.txt");
-  TdmaControllerHelper controller;
-  controller.Set ("SlotTime", TimeValue (MilliSeconds (100)));
-  controller.Set ("GuardTime", TimeValue (MilliSeconds (0)));
-  controller.Set ("InterFrameTime", TimeValue (MilliSeconds (0)));
-  tdma.SetTdmaControllerHelper (controller);
-  NetDeviceContainer staDevices, apDevices;
-  staDevices = tdma.Install(wifiStaNodes);
-  apDevices = tdma.Install(wifiApNode);
-*/
-
   // Mobility models
   MobilityHelper mobility;
 
@@ -368,51 +357,18 @@ main (int argc, char *argv[])
         app1->SetStartTime (Seconds (1));
         app1->SetStopTime (Seconds (20));
       }
-//    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (0), UdpSocketFactory::GetTypeId ());
-//    Ptr<Socket> ns3UdpSocket2 = Socket::CreateSocket (wifiStaNodes.Get (1), UdpSocketFactory::GetTypeId ());
 
-//    // Apps install on STA nodes with setup
-//    Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (0),1);
-//    app1->Setup(ns3UdpSocket, sinkAddress, 1000, 10, DataRate ("1Mbps"));
-//    wifiStaNodes.Get (0)->AddApplication (app1);
-//    app1->SetSlotTime(tslot);
-//    app1->SetStartTime (Seconds (1));
-//    app1->SetStopTime (Seconds (20));
+//    for (uint32_t i=0; i<nWifi-1; i++)
+//      {
+//        Ptr<MyApp> app = wifiStaNodes.Get(i)->GetApplication(0);
+//        app->SetRate();
+//      }
 
-//    Ptr<MyApp> app2 = CreateObject<MyApp> (wifiStaNodes.Get (1),2);
-//    app2->Setup(ns3UdpSocket2, sinkAddress, 1000, 10, DataRate ("1Mbps"));
-//    wifiStaNodes.Get (1)->AddApplication (app2);
-//    app2->SetSlotTime(tslot);
-//    app2->SetStartTime (Seconds (1));
-//    app2->SetStopTime (Seconds (20));
+//  if (Simulator::Schedule(MilliSeconds(3*nWifi*tslot), &SetRate))
+//    {
+//      NS_LOG_UNCOND("DataRate = 3Mbps");
+//    }
 
-
-
-  /* NEW APPLICATION */
-/*
-  // sink app on AP
-  uint16_t port = 9;
-
-  Ptr<Node> apnode = wifiApNode.Get(0);
-  Ipv4Address nodeAddress = apnode->GetObject<Ipv4> ()->GetAddress (1, 0).GetLocal ();
-  std::cout << "SetupPacketReceive (nodeAddress, node) " << nodeAddress << " " << apnode << std::endl;
-  Ptr<Socket> sink = SetupPacketReceive (nodeAddress, apnode, port);
-
-  // client app on STAs CHANGE ON TIME AND OFF TIME
-  OnOffHelper onoff ("ns3::UdpSocketFactory", Address (InetSocketAddress (apInterface.GetAddress (0), port)));
-  onoff.SetAttribute ("OnTime", StringValue ("ns3::MilliSeconds(100))"));
-  onoff.SetAttribute ("OffTime", StringValue ("ns3::MilliSeconds(100))"));
-  ApplicationContainer apps = onoff.Install (wifiStaNodes.Get (0));
-  apps.Start(Seconds(0));
-  apps.Stop(Seconds(9));
-
-  OnOffHelper onoff2 ("ns3::UdpSocketFactory", Address (InetSocketAddress (apInterface.GetAddress (0), port)));
-  onoff2.SetAttribute ("OnTime", StringValue ("ns3::MilliSeconds(100))"));
-  onoff2.SetAttribute ("OffTime", StringValue ("ns3::MilliSeconds(100))"));
-  ApplicationContainer apps2 = onoff2.Install (wifiStaNodes.Get (1));
-  apps2.Start(Seconds(0));
-  apps2.Stop(Seconds(9));
-*/
   Simulator::Stop (Seconds (21.0));
 
 //    if (tracing == true)
