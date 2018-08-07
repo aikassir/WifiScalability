@@ -35,8 +35,8 @@ NS_LOG_COMPONENT_DEFINE ("device1");
 class apApp : public Application
 {
 public:
-    apApp();
-    ~apApp(){}
+//    apApp(){}
+//    ~apApp(){}
 
 private:
 
@@ -54,10 +54,6 @@ private:
 
     void RequestId(Ptr<Socket> socket);
 };
-
-apApp::apApp ()
-{
-}
 
 void apApp::StartApplication ()
 {
@@ -110,53 +106,80 @@ void apApp::RequestId (Ptr<Socket> socket)
 class staApp : public Application
 {
 public:
-    staApp (Ptr<Node> node, int id);
-    virtual ~staApp(){}
+    staApp (Ptr<Node> node, int id, Address address,  uint32_t packetSize, uint32_t nPackets, DataRate dataRate, uint32_t nWifi);
+    void SetSlotTime(uint32_t tslot);
+//    virtual ~staApp(){}
 
 private:
     virtual void StartApplication (void);
     virtual void StopApplication (void);
 
-    void ScheduleAssociation(void);
-    void StartAssociation (void);
+    void ScheduleAssociation(int device);
+    void StartAssociation (int device);
     void StopAssociation (void);
 
-//    void Connect();
     void ScheduleRequestId();
-    void RequestId();
-    void UpdateId(Ptr<Socket> socket);
+    void RequestId(); // funtion requesting id from AP
+    void UpdateId(Ptr<Socket> socket); // callback receiving id from AP
 
-    Ptr<Node> m_node;
-    Ptr<Socket> m_socket;
-    int m_id;
+    void SendPacketTimed(void);
+    void ScheduleTx(void);
+    void SetRate(void);
+
+    std::vector< Ptr<Socket> > m_sockets;
+    Address m_peer;
+    uint32_t m_packetSize;
+    uint32_t m_nPackets;
+    uint32_t m_dataRate;
+    uint32_t m_packetsSent;
+    uint32_t m_id;
+    uint32_t m_tslot;
+    uint32_t m_nWifi;
     EventId m_sendEvent;
     bool m_running;
 
-    Ptr<WifiNetDevice> m_device;
-    Ptr<StaWifiMac> m_mac;
+    std::vector< Ptr<WifiNetDevice> > m_devices;
+    std::vector< Ptr<StaWifiMac> > m_macs;
 };
 
-staApp::staApp (Ptr<Node> node, int id)
+staApp::staApp (Ptr<Node> node, int id, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate, uint32_t nWifi)
   : m_node(node),
     m_id(id),
-    m_sendEvent (),
-    m_running (false)
+    m_peer(address),
+    m_packetSize(packetSize),
+    m_nPackets(nPackets),
+    m_dataRate(dataRate),
+    m_packetsSent(0),
+    m_tslot(0),
+    m_nWifi(nWifi),
+    m_sendEvent(),
+    m_running(false)
 {
-    m_device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
-    m_mac = StaticCast<StaWifiMac>(m_device->GetMac());   
-    m_mac->SetLinkUpCallback (MakeCallback(&staApp::ScheduleRequestId,this)); // setup callback for requesting id
-    m_socket=Socket::CreateSocket (node, UdpSocketFactory::GetTypeId ());
-    m_socket->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
-    uint16_t staPort = 9997;
-    Address staAddress (InetSocketAddress (Ipv4Address::GetAny (), staPort));
-    m_socket->Bind(staAddress);
+    m_devices.push_back( StaticCast<WifiNetDevice>(m_node->GetDevice(0)) );
+    m_devices.push_back( StaticCast<WifiNetDevice>(m_node->GetDevice(1)) );
+    m_macs.push_back (StaticCast<StaWifiMac>(m_devices[0]->GetMac()));
+    m_macs.push_back (StaticCast<StaWifiMac>(m_devices[1]->GetMac()));
+
+    m_macs[0]->SetLinkUpCallback (MakeCallback(&staApp::ScheduleRequestId,this)); // setup callback for requesting id
+    m_sockets.push_back(Socket::CreateSocket (m_node, UdpSocketFactory::GetTypeId ()));
+    m_sockets[0]->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
+    Ipv4Address staIpv4Address0=m_node->GetObject<Ipv4>()->GetAddress (0,0).GetLocal ();
+
+    uint16_t staPort = 9996;
+    Address staAddress0 (InetSocketAddress (staIpv4Address0, staPort));
+    m_sockets[0]->Bind(staAddress0);
+
+    Ipv4Address staIpv4Address1=m_node->GetObject<Ipv4>()->GetAddress (1,0).GetLocal ();
+    staPort = 9998;
+    Address staAddress1 (InetSocketAddress (staIpv4Address1, staPort));
+    m_sockets.push_back (Socket::CreateSocket (m_node, UdpSocketFactory::GetTypeId ()));
+    m_sockets[1]->Bind (staAddress1);
 }
 
 void
 staApp::StartApplication (void)
 {
-    m_running = true;
-    ScheduleAssociation ();
+    ScheduleAssociation (0);
 }
 
 void
@@ -169,27 +192,17 @@ staApp::StopApplication (void)
     }
 }
 
-void staApp::StartAssociation (void)
+void staApp::StartAssociation (int device)
 {
-    m_mac->SetAttribute ("ActiveProbing",BooleanValue(true));
+    m_macs[device]->SetAttribute ("ActiveProbing",BooleanValue(true));
 }
 
-void staApp::ScheduleAssociation (void)
+void staApp::ScheduleAssociation (int device)
 {
-    if (m_running)
-    {
-        Time tNext (MilliSeconds(m_id*100));
-        m_sendEvent = Simulator::Schedule (tNext, &staApp::StartAssociation, this);
-    }
+    // pick-up point!!!!
+    Time tNext (MilliSeconds(m_id*100));
+    Simulator::Schedule (tNext, &staApp::StartAssociation, this, device);
 }
-
-//void staApp::Connect()
-//{
-//    // connect
-//    uint16_t apPort = 9998;
-//    Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
-//    m_socket->Connect (apAddress);
-//}
 
 void staApp::ScheduleRequestId()
 {
