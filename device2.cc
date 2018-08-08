@@ -209,7 +209,7 @@ main (int argc, char *argv[])
 {
   bool verbose = true;
 
-  uint32_t nWifi = 56;
+  uint32_t nWifi = 101;
   //bool tracing = true;
 
 //  CommandLine cmd;
@@ -290,13 +290,13 @@ main (int argc, char *argv[])
   mobility.SetPositionAllocator ("ns3::GridPositionAllocator",
                                  "MinX", DoubleValue (0.0),
                                  "MinY", DoubleValue (0.0),
-                                 "DeltaX", DoubleValue (2.0),
-                                 "DeltaY", DoubleValue (2.0),
-                                 "GridWidth", UintegerValue (3),
+                                 "DeltaX", DoubleValue (0.5),
+                                 "DeltaY", DoubleValue (1.0),
+                                 "GridWidth", UintegerValue (1),
                                  "LayoutType", StringValue ("RowFirst"));
 
   mobility.SetMobilityModel ("ns3::RandomWalk2dMobilityModel",
-                             "Bounds", RectangleValue (Rectangle (-55, 55, -55, 55)));
+                             "Bounds", RectangleValue (Rectangle (-100, 100, -100, 100)));
   mobility.Install (wifiStaNodes);
 
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");

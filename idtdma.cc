@@ -106,7 +106,7 @@ void apApp::RequestId (Ptr<Socket> socket)
 class staApp : public Application
 {
 public:
-    staApp (Ptr<Node> node, int id, Address address,  uint32_t packetSize, uint32_t nPackets, DataRate dataRate, uint32_t nWifi);
+    staApp (Ptr<Node> node, int id, Address address,  uint32_t packetSize, uint32_t nPackets, uint32_t dataRate, uint32_t nWifi);
     void SetSlotTime(uint32_t tslot);
 //    virtual ~staApp(){}
 
@@ -126,6 +126,7 @@ private:
     void ScheduleTx(void);
     void SetRate(void);
 
+    Ptr<Node> m_node;
     std::vector< Ptr<Socket> > m_sockets;
     Address m_peer;
     uint32_t m_packetSize;
@@ -142,14 +143,14 @@ private:
     std::vector< Ptr<StaWifiMac> > m_macs;
 };
 
-staApp::staApp (Ptr<Node> node, int id, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate, uint32_t nWifi)
+staApp::staApp (Ptr<Node> node, int id, Address address, uint32_t packetSize, uint32_t nPackets, uint32_t dataRate, uint32_t nWifi)
   : m_node(node),
-    m_id(id),
     m_peer(address),
     m_packetSize(packetSize),
     m_nPackets(nPackets),
     m_dataRate(dataRate),
     m_packetsSent(0),
+    m_id(id),
     m_tslot(0),
     m_nWifi(nWifi),
     m_sendEvent(),
@@ -180,6 +181,12 @@ void
 staApp::StartApplication (void)
 {
     ScheduleAssociation (0);
+    ScheduleRequestId ();
+    ScheduleAssociation (1);
+    Time tstart = MilliSeconds(m_id*m_tslot);
+    Simulator::Schedule(tstart,&staApp::SendPacketTimed,this);
+
+
 }
 
 void
@@ -199,7 +206,6 @@ void staApp::StartAssociation (int device)
 
 void staApp::ScheduleAssociation (int device)
 {
-    // pick-up point!!!!
     Time tNext (MilliSeconds(m_id*100));
     Simulator::Schedule (tNext, &staApp::StartAssociation, this, device);
 }
@@ -215,7 +221,7 @@ void staApp::RequestId ()
     Ptr<Packet> packet = Create<Packet> (64);
     uint16_t apPort = 9998;
     Address apAddress (InetSocketAddress ("192.168.1.1", apPort));
-    m_socket->SendTo(packet,0,apAddress);
+    m_sockets[0]->SendTo(packet,0,apAddress);
 }
 
 void staApp::UpdateId(Ptr<Socket> socket)
@@ -224,6 +230,31 @@ void staApp::UpdateId(Ptr<Socket> socket)
     std::ostringstream ostr;
     packet->CopyData(&ostr,packet->GetSize ());
     m_id=boost::lexical_cast<int>(ostr.str ());
+}
+
+void staApp::ScheduleTx (void)
+{
+
+    Time tNext (MilliSeconds(m_nWifi*m_tslot + 10));
+    m_sendEvent = Simulator::Schedule (tNext, &staApp::SendPacketTimed,this);
+
+}
+
+void staApp::SendPacketTimed (void)
+{
+  Ptr<Packet> packet = Create<Packet> (m_packetSize);
+  m_sockets[1]->SendTo(packet,0,m_peer);
+
+  if (++m_packetsSent<m_nPackets)
+    {
+      ScheduleTx ();
+
+    }
+}
+
+void staApp::SetSlotTime (uint32_t tslot)
+{
+  m_tslot = tslot;
 }
 
 int main (int argc, char *argv[])
@@ -335,12 +366,14 @@ int main (int argc, char *argv[])
     apApp1->SetStartTime(Seconds(1));
     apApp1->SetStopTime(Seconds(20));
 
-    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0),1);
+    // checkpoint: which port number to use and should there be two apps running on the AP: one is packet sink for data and one is apApp?
+    Address sinkAddress (InetSocketAddress (apInterface.GetAddress (0), 9998));
+    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0),1, sinkAddress, 200, 20, 10, nWifi);
     wifiStaNodes.Get (0)->AddApplication (app1);
     app1->SetStartTime (Seconds (1));
     app1->SetStopTime (Seconds (20));
 
-    Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), 2);
+    Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), 2, sinkAddress, 200, 20, 10, nWifi);
     wifiStaNodes.Get (1)->AddApplication (app2);
     app2->SetStartTime (Seconds (1));
     app2->SetStopTime (Seconds (20));
