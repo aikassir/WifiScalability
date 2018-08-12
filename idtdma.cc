@@ -59,7 +59,7 @@ void apApp::StartApplication ()
 {
     m_device = StaticCast<WifiNetDevice>(m_node->GetDevice(0));
     m_mac = StaticCast<ApWifiMac>(m_device->GetMac());
-    uint16_t apPort = 9998;
+    uint16_t apPort = 9996;
     Address apAddress (InetSocketAddress (Ipv4Address::GetAny (), apPort));
     m_socket=Socket::CreateSocket (m_node, UdpSocketFactory::GetTypeId ());
     m_socket->SetRecvCallback (MakeCallback(&apApp::RequestId, this));
@@ -92,7 +92,7 @@ void apApp::RequestId (Ptr<Socket> socket)
 class staApp : public Application
 {
 public:
-    staApp (Ptr<Node> node, int id, Ipv4Address address,  uint32_t packetSize, uint32_t nPackets, uint32_t dataRate, uint32_t nWifi);
+    staApp (Ptr<Node> node, int id,  uint32_t packetSize, uint32_t nPackets, uint32_t dataRate, uint32_t nWifi);
     void SetSlotTime(uint32_t tslot);
 //    virtual ~staApp(){}
 
@@ -129,9 +129,8 @@ private:
     std::vector< Ptr<StaWifiMac> > m_macs;
 };
 
-staApp::staApp (Ptr<Node> node, int id, Ipv4Address address, uint32_t packetSize, uint32_t nPackets, uint32_t dataRate, uint32_t nWifi)
+staApp::staApp (Ptr<Node> node, int id, uint32_t packetSize, uint32_t nPackets, uint32_t dataRate, uint32_t nWifi)
   : m_node(node),
-    m_peer(address),
     m_packetSize(packetSize),
     m_nPackets(nPackets),
     m_dataRate(dataRate),
@@ -169,10 +168,9 @@ void
 staApp::StartApplication (void)
 {
     ScheduleAssociation (0);
-//    ScheduleRequestId ();
-//    ScheduleAssociation (1);
-//    Time tstart = MilliSeconds(m_id*m_tslot);
-//    Simulator::Schedule(tstart,&staApp::SendPacketTimed,this);
+    ScheduleRequestId ();
+    Time tstart = MilliSeconds(m_id*m_tslot);
+    Simulator::Schedule(tstart,&staApp::SendPacket,this);
 
 
 }
@@ -199,6 +197,8 @@ void staApp::ScheduleAssociation (int device)
     Time tNext(Seconds(tSec+1)); // start on the next second
     tNext+=MilliSeconds(m_id*100);
     Simulator::Schedule (tNext - tNow, &staApp::StartAssociation, this, device);
+//    Time tNext (MilliSeconds(m_id));
+//    m_sendEvent = Simulator::Schedule (tNext, &MyApp::StartAssociation, this);
 }
 
 void staApp::ScheduleRequestId()
@@ -213,8 +213,9 @@ void staApp::ScheduleRequestId()
 void staApp::RequestId ()
 {
     Ptr<Packet> packet = Create<Packet> (64);
-    uint16_t apPort = 9997;
-    Address apAddress (InetSocketAddress (m_peer, apPort));
+    uint16_t apPort = 9996;
+    Ipv4Address staIpv4Address0=m_node->GetObject<Ipv4>()->GetAddress (0,0).GetLocal ();
+    Address apAddress (InetSocketAddress (staIpv4Address0, apPort));
     m_sockets[0]->SendTo(packet,0,apAddress);
 }
 
@@ -241,7 +242,10 @@ void staApp::ScheduleTx (void)
 void staApp::SendPacket (void)
 {
     Ptr<Packet> packet = Create<Packet> (m_packetSize);
-    m_sockets[1]->SendTo(packet,0,m_peer);
+    uint16_t apPort = 9998;
+    Ipv4Address staIpv4Address1=m_node->GetObject<Ipv4>()->GetAddress (1,0).GetLocal ();
+    Address apAddress (InetSocketAddress (staIpv4Address1, apPort));
+    m_sockets[1]->SendTo(packet,0,apAddress);
     if (++m_packetsSent<m_nPackets)
     {
         ScheduleTx ();
@@ -277,13 +281,13 @@ int main (int argc, char *argv[])
         return 1;
     }
 
-    if (verbose)
-    {
-        LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
-        LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
-        LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
-        LogComponentEnable ("device1", LOG_LEVEL_INFO);
-    }
+//    if (verbose)
+//    {
+//        LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
+//        LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
+//        LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
+//        LogComponentEnable ("device1", LOG_LEVEL_INFO);
+//    }
 
     ns3::PacketMetadata::Enable();
 
@@ -299,9 +303,16 @@ int main (int argc, char *argv[])
     NodeContainer wifiApNode;
     wifiApNode.Create(1);
 
+    // checkpoint: The whole network number confusion & two apps running on the AP
     YansWifiChannelHelper channel = YansWifiChannelHelper::Default ();
     YansWifiPhyHelper phy = YansWifiPhyHelper::Default ();
     phy.SetChannel (channel.Create ());
+    phy.Set("ChannelNumber",UintegerValue(0));
+
+    YansWifiChannelHelper channel1 = YansWifiChannelHelper::Default ();
+    YansWifiPhyHelper phy1 = YansWifiPhyHelper::Default ();
+    phy1.SetChannel (channel1.Create ());
+    phy1.Set("ChannelNumber",UintegerValue(1));
 
     WifiHelper wifi;
     wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
@@ -310,14 +321,18 @@ int main (int argc, char *argv[])
     Ssid ssid = Ssid ("ns-3-ssid");
     mac.SetType ("ns3::StaWifiMac","Ssid", SsidValue (ssid),"ActiveProbing", BooleanValue (false));
 
-    NetDeviceContainer staDevices;
-    staDevices = wifi.Install (phy, mac, wifiStaNodes);
+    NetDeviceContainer staDevices0;
+    staDevices0 = wifi.Install (phy, mac, wifiStaNodes);
+
+    NetDeviceContainer staDevices1;
+    staDevices1 = wifi.Install (phy1, mac, wifiStaNodes);
 
 
     mac.SetType ("ns3::ApWifiMac","Ssid", SsidValue (ssid),"BeaconGeneration", BooleanValue(false),"BeaconInterval", TimeValue(Days(1)));
 
-    NetDeviceContainer apDevices;
+    NetDeviceContainer apDevices, apDevices1;
     apDevices = wifi.Install (phy, mac, wifiApNode);
+    apDevices1 = wifi.Install(phy1,mac,wifiApNode);
 
     // mobility configuration
     MobilityHelper mobility;
@@ -342,34 +357,39 @@ int main (int argc, char *argv[])
     stack.Install (wifiStaNodes);
 
     Ipv4AddressHelper address;
-    Ipv4InterfaceContainer wifiInterfaces;
+    Ipv4InterfaceContainer wifiInterfaces0;
+    Ipv4InterfaceContainer wifiInterfaces1;
     Ipv4InterfaceContainer apInterface;
-
+    Ipv4InterfaceContainer apInterface1;
 
     address.SetBase ("192.168.1.0", "255.255.255.0");
     apInterface = address.Assign (apDevices);
-    wifiInterfaces = address.Assign (staDevices);
+    wifiInterfaces0 = address.Assign (staDevices0);
+    address.SetBase ("10.1.1.0", "255.255.255.0");
+    apInterface1 = address.Assign (apDevices1);
+    wifiInterfaces1 = address.Assign (staDevices1);
 
-    //  uint16_t port = 9999;
-    //  UdpServerHelper server(port);
-
-    //  ApplicationContainer serverApps = server.Install (wifiApNode);
-    //  serverApps.Start (Seconds (1));
-    //  serverApps.Stop (Seconds (10));
-
+    // app for request id on first channel
     Ptr<apApp> apApp1 = CreateObject<apApp>();
     wifiApNode.Get(0)->AddApplication(apApp1);
     apApp1->SetStartTime(Seconds(1));
     apApp1->SetStopTime(Seconds(20));
 
-    // checkpoint: which port number to use and should there be two apps running on the AP: one is packet sink for data and one is apApp?
-    Ipv4Address sinkAddress = apInterface.GetAddress (0);
-    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0),1, sinkAddress, 200, 20, 10, nWifi);
+    // Packet sink application for data tx on second channel
+    uint16_t sinkPort = 9998;
+    Address sinkAddress (InetSocketAddress (apInterface.GetAddress (0), sinkPort));
+    PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", sinkAddress);
+    ApplicationContainer sinkApps = packetSinkHelper.Install (wifiApNode.Get (0));
+    sinkApps.Start (Seconds (1));
+    sinkApps.Stop (Seconds (20));
+    //
+
+    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0),1, 200, 20, 10, nWifi);
     wifiStaNodes.Get (0)->AddApplication (app1);
     app1->SetStartTime (Seconds (1));
     app1->SetStopTime (Seconds (20));
 
-    Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), 2, sinkAddress, 200, 20, 10, nWifi);
+    Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), 2, 200, 20, 10, nWifi);
     wifiStaNodes.Get (1)->AddApplication (app2);
     app2->SetStartTime (Seconds (1));
     app2->SetStopTime (Seconds (20));
