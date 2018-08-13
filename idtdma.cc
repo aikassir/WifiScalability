@@ -223,9 +223,10 @@ void staApp::UpdateId(Ptr<Socket> socket)
 {
     Ptr<Packet> packet=socket->Recv ();
     std::ostringstream ostr;
-    packet->CopyData(&ostr,packet->GetSize ());
-    m_id=boost::lexical_cast<int>(ostr.str ());
-
+    uint8_t* buffer = new uint8_t[packet->GetSize()];
+    packet->CopyData(buffer,packet->GetSize ());
+//    m_id=boost::lexical_cast<uint32_t>(ostr.str ());
+    m_id = *buffer;
     // once id is updated, start association on second device
     ScheduleAssociation (1);
 }
@@ -303,7 +304,6 @@ int main (int argc, char *argv[])
     NodeContainer wifiApNode;
     wifiApNode.Create(1);
 
-    // checkpoint: The whole network number confusion & two apps running on the AP
     YansWifiChannelHelper channel = YansWifiChannelHelper::Default ();
     YansWifiPhyHelper phy = YansWifiPhyHelper::Default ();
     phy.SetChannel (channel.Create ());
