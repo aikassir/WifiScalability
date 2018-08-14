@@ -195,7 +195,7 @@ void staApp::ScheduleAssociation (int device)
     Time tNow=Simulator::Now ();
     double tSec=std::round(tNow.GetSeconds ());
     Time tNext(Seconds(tSec+1)); // start on the next second
-    tNext+=MilliSeconds(m_id*100);
+    tNext+=MilliSeconds(m_id);
     Simulator::Schedule (tNext - tNow, &staApp::StartAssociation, this, device);
 //    Time tNext (MilliSeconds(m_id));
 //    m_sendEvent = Simulator::Schedule (tNext, &MyApp::StartAssociation, this);
@@ -236,8 +236,10 @@ void staApp::ScheduleTx (void)
     Time tNow=Simulator::Now ();
     double tSec=std::round(tNow.GetSeconds ());
     Time tNext(Seconds(tSec+1)); // start on the next second
-    tNext+=MilliSeconds(m_id*100);
+    tNext+=MilliSeconds(m_nWifi*m_tslot );
     m_sendEvent = Simulator::Schedule (tNext - tNow, &staApp::SendPacket,this);
+//    Time tNext (MilliSeconds(m_nWifi*m_tslot + 10));
+//    Simulator::Schedule (tNext, &staApp::SendPacket,this);
 }
 
 void staApp::SendPacket (void)
@@ -287,7 +289,7 @@ int main (int argc, char *argv[])
 //        LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
 //        LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
 //        LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
-//        LogComponentEnable ("device1", LOG_LEVEL_INFO);
+        LogComponentEnable ("device1", LOG_LEVEL_INFO);
 //    }
 
     ns3::PacketMetadata::Enable();
@@ -383,14 +385,16 @@ int main (int argc, char *argv[])
     sinkApps.Start (Seconds (1));
     sinkApps.Stop (Seconds (20));
     //
-
+    uint32_t tslot = 10;
     Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0),1, 200, 20, 10, nWifi);
     wifiStaNodes.Get (0)->AddApplication (app1);
+    app1->SetSlotTime(tslot);
     app1->SetStartTime (Seconds (1));
     app1->SetStopTime (Seconds (20));
 
     Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), 2, 200, 20, 10, nWifi);
     wifiStaNodes.Get (1)->AddApplication (app2);
+    app2->SetSlotTime(tslot);
     app2->SetStartTime (Seconds (1));
     app2->SetStopTime (Seconds (20));
 
