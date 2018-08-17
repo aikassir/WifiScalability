@@ -47,7 +47,7 @@ public:
     MyApp (Ptr<Node> node, int id);
     virtual ~MyApp();
     void Setup (Ptr<Socket> socket, Address address, uint32_t packetSize, uint32_t nPackets, DataRate dataRate, uint32_t nWifi);
-    void SetSlotTime(double tslot);
+    void SetSlotTime(uint32_t tslot);
 
 private:
     virtual void StartApplication (void);
@@ -67,7 +67,7 @@ private:
     uint32_t        m_packetsSent;
     Ptr<Node> m_node;
     uint32_t m_id;
-    double m_tslot;
+    uint32_t m_tslot;
     uint32_t m_nWifi;
     EventId m_sendEvent;
     bool m_running;
@@ -135,7 +135,7 @@ MyApp::StopApplication (void)
 }
 
 void
-MyApp::SetSlotTime (double tslot)
+MyApp::SetSlotTime (uint32_t tslot)
 {
   m_tslot = tslot;
 }
@@ -155,8 +155,8 @@ MyApp::ScheduleAssociation (void)
 {
     if (m_running)
     {
-        Time tNext (MilliSeconds(m_id+2));
-        m_sendEvent = Simulator::Schedule (tNext, &MyApp::StartAssociation, this);
+
+        m_sendEvent = Simulator::Schedule (Simulator::Now(), &MyApp::StartAssociation, this);
     }
 //    NS_LOG_UNCOND("Association done");
 }
@@ -174,7 +174,7 @@ MyApp::ScheduleTx (void)
 void
 MyApp::SendPacketTimed (void)
 {
-  Ptr<Packet> packet = Create<Packet> (m_packetSize);  
+  Ptr<Packet> packet = Create<Packet> (m_packetSize);
   m_socket->Bind ();
   m_socket->SendTo(packet,0,m_peer);
 
@@ -204,50 +204,13 @@ MyApp::SendPacketTimed (void)
 //}
 
 
-int 
+int
 main (int argc, char *argv[])
 {
-  bool verbose = true;
-
   uint32_t nWifi = 101;
-  //bool tracing = true;
 
-//  CommandLine cmd;
-//  cmd.AddValue ("nWifi", "Number of wifi STA devices", nWifi);
-//  cmd.AddValue ("verbose", "Tell echo applications to log if true", verbose);
-//  cmd.AddValue ("tracing", "Enable pcap tracing", tracing);
-
-//  cmd.Parse (argc,argv);
-
-  // Check for valid number of csma or wifi nodes
-  // 250 should be enough, otherwise IP addresses 
-  // soon become an issue
-//  if (nWifi > 250)
-//    {
-//      std::cout << "Too many wifi or csma nodes, no more than 250 each." << std::endl;
-//      return 1;
-//    }
-
-  if (verbose)
-    {
-
-    }
-  //LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
-  //LogComponentEnable ("ApWifiMac", LOG_LEVEL_INFO);
-  //LogComponentEnable ("Socket", LOG_LEVEL_INFO);
-   LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
   ns3::PacketMetadata::Enable();
 
-//  // Create p2p nodes: AP
-//  NodeContainer p2pNodes;
-//  p2pNodes.Create (2);
-
-//  PointToPointHelper pointToPoint;
-//  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-//  pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
-
-//  NetDeviceContainer p2pDevices;
-//  p2pDevices = pointToPoint.Install (p2pNodes);
 
   // WiFi nodes
   NodeContainer wifiStaNodes;
@@ -334,7 +297,7 @@ main (int argc, char *argv[])
 
   /**** OLD APPLICATION ****/
 
-    double tslot = 50; //
+    uint32_t tslot = 5; //
 
     // Create packet sink on destination
     uint16_t sinkPort = 8080;
@@ -377,6 +340,11 @@ main (int argc, char *argv[])
 //        //      phy.EnablePcap ("third", apDevices.Get (0));
 //        //      csma.EnablePcap ("third", csmaDevices.Get (0), true);
 //      }
+
+    // Flow monitor
+    Ptr<FlowMonitor> flowmonitor;
+    FlowMonitorHelper flowhelper;
+    flowmonitor = flowhelper.InstallAll();
 
     Simulator::Run ();
     Simulator::Destroy ();

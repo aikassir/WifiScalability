@@ -110,7 +110,7 @@ private:
 
     void SendPacket(void);
     void ScheduleTx(void);
-    void SetRate(void);
+    void PeriodicTx(void);
 
     Ptr<Node> m_node;
     std::vector< Ptr<Socket> > m_sockets;
@@ -159,7 +159,7 @@ staApp::staApp (Ptr<Node> node, Ipv4Address addr,Ipv4Address addr1,uint32_t id, 
     m_sockets[0]->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
     m_sockets[0]->Bind(staAddress0);
 
-    m_macs[1]->SetLinkUpCallback (MakeCallback(&staApp::ScheduleTx,this));
+    //m_macs[1]->SetLinkUpCallback (MakeCallback(&staApp::PeriodicTx,this));
     Ipv4Address staIpv4Address1=m_node->GetObject<Ipv4>()->GetAddress (2,0).GetLocal();
     staPort = 9998;
     Address staAddress1 (InetSocketAddress (staIpv4Address1, staPort));
@@ -192,6 +192,10 @@ staApp::StopApplication (void)
 void staApp::StartAssociation (int device)
 {
     m_macs[device]->SetAttribute ("ActiveProbing",BooleanValue(true));
+    if (device ==1)
+      {
+        PeriodicTx ();
+      }
 }
 
 void staApp::ScheduleAssociation (int device)
@@ -233,6 +237,12 @@ void staApp::UpdateId(Ptr<Socket> socket)
   ScheduleAssociation (1);
 
 
+}
+
+void staApp::PeriodicTx(void)
+{
+  Time tstart = MilliSeconds(m_id*m_tslot);
+  Simulator::Schedule(tstart,&staApp::SendPacket,this);
 }
 
 void staApp::ScheduleTx (void)
@@ -292,7 +302,7 @@ int main (int argc, char *argv[])
 //        LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
 //        LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
 //        LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
-        LogComponentEnable ("device1", LOG_LEVEL_INFO);
+        LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
 //    }
 
     ns3::PacketMetadata::Enable();
@@ -389,17 +399,26 @@ int main (int argc, char *argv[])
     sinkApps.Stop (Seconds (20));
     //
     uint32_t tslot = 50;
-    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0), apInterface.GetAddress(0), apInterface1.GetAddress(0), 11, 200, 20, nWifi);
-    wifiStaNodes.Get (0)->AddApplication (app1);
-    app1->SetSlotTime(tslot);
-    app1->SetStartTime (Seconds (1));
-    app1->SetStopTime (Seconds (20));
+    for (uint32_t i=0; i<nWifi; i++)
+      {
+        Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (i), apInterface.GetAddress(0), apInterface1.GetAddress(0), 0, 200, 20, nWifi);
+        wifiStaNodes.Get (i)->AddApplication (app1);
+        app1->SetSlotTime(tslot);
+        app1->SetStartTime (Seconds (1));
+        app1->SetStopTime (Seconds (20));
+      }
 
-    Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), apInterface.GetAddress(0), apInterface1.GetAddress(0), 22, 200, 20, nWifi);
-    wifiStaNodes.Get (1)->AddApplication (app2);
-    app2->SetSlotTime(tslot);
-    app2->SetStartTime (Seconds (1));
-    app2->SetStopTime (Seconds (20));
+//    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0), apInterface.GetAddress(0), apInterface1.GetAddress(0), 11, 200, 20, nWifi);
+//    wifiStaNodes.Get (0)->AddApplication (app1);
+//    app1->SetSlotTime(tslot);
+//    app1->SetStartTime (Seconds (1));
+//    app1->SetStopTime (Seconds (20));
+
+//    Ptr<staApp> app2 = CreateObject<staApp> (wifiStaNodes.Get (1), apInterface.GetAddress(0), apInterface1.GetAddress(0), 22, 200, 20, nWifi);
+//    wifiStaNodes.Get (1)->AddApplication (app2);
+//    app2->SetSlotTime(tslot);
+//    app2->SetStartTime (Seconds (1));
+//    app2->SetStopTime (Seconds (20));
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
