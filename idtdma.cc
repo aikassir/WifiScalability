@@ -125,6 +125,7 @@ private:
     uint32_t m_nWifi;
     EventId m_sendEvent;
     bool m_running;
+    Address m_txip;
 
     std::vector< Ptr<WifiNetDevice> > m_devices;
     std::vector< Ptr<StaWifiMac> > m_macs;
@@ -142,7 +143,8 @@ staApp::staApp (Ptr<Node> node, Ipv4Address addr,Ipv4Address addr1,uint32_t id, 
     m_tslot(0),
     m_nWifi(nWifi),
     m_sendEvent(),
-    m_running(false)
+    m_running(false),
+    m_txip()
 {
     m_devices.push_back( StaticCast<WifiNetDevice>(m_node->GetDevice(0)) );
     m_devices.push_back( StaticCast<WifiNetDevice>(m_node->GetDevice(1)) );
@@ -159,23 +161,23 @@ staApp::staApp (Ptr<Node> node, Ipv4Address addr,Ipv4Address addr1,uint32_t id, 
     m_sockets[0]->SetRecvCallback(MakeCallback(&staApp::UpdateId,this));
     m_sockets[0]->Bind(staAddress0);
 
-    //m_macs[1]->SetLinkUpCallback (MakeCallback(&staApp::PeriodicTx,this));
+    m_macs[1]->SetLinkUpCallback (MakeCallback(&staApp::ScheduleTx,this));
     Ipv4Address staIpv4Address1=m_node->GetObject<Ipv4>()->GetAddress (2,0).GetLocal();
     staPort = 9998;
     Address staAddress1 (InetSocketAddress (staIpv4Address1, staPort));
     m_sockets.push_back (Socket::CreateSocket (m_node, UdpSocketFactory::GetTypeId ()));
     m_sockets[1]->Bind (staAddress1);
+    m_txip = staAddress1;
 }
 
 void
 staApp::StartApplication (void)
 {
-   // ScheduleRequestId ();
+    //RequestId ();
     ScheduleAssociation (0);
 //    ScheduleRequestId ();
 //    Time tstart = MilliSeconds(m_id*m_tslot);
 //    Simulator::Schedule(tstart,&staApp::SendPacket,this);
-
 
 }
 
@@ -192,10 +194,10 @@ staApp::StopApplication (void)
 void staApp::StartAssociation (int device)
 {
     m_macs[device]->SetAttribute ("ActiveProbing",BooleanValue(true));
-    if (device ==1)
-      {
-        PeriodicTx ();
-      }
+//    if (device ==1)
+//      {
+//        PeriodicTx ();
+//      }
 }
 
 void staApp::ScheduleAssociation (int device)
@@ -205,8 +207,13 @@ void staApp::ScheduleAssociation (int device)
 //    Time tNext(Seconds(tSec+1)); // start on the next second
 //    tNext+=MilliSeconds(m_id*m_tslot);
 //    Simulator::Schedule (tNext - tNow, &staApp::StartAssociation, this, device);
-    Time tNext (MilliSeconds(m_id+2));
+    Time tNext (MilliSeconds(2));
     m_sendEvent = Simulator::Schedule (tNext, &staApp::StartAssociation, this,device);
+//    if (device ==1)
+//      {
+//        Time tNext (MilliSeconds(m_id+2));
+//        m_sendEvent = Simulator::Schedule (tNext, &staApp::StartAssociation, this,device);
+//      }
 }
 
 void staApp::ScheduleRequestId()
@@ -216,7 +223,7 @@ void staApp::ScheduleRequestId()
 //    Time tNext(Seconds(tSec+1)); // start on the next second
 //    tNext+=MilliSeconds(m_id*m_tslot);
 //    Simulator::Schedule (tNext - tNow, &staApp::RequestId, this);
-      Simulator::Schedule (Seconds(2), &staApp::RequestId, this);
+      Simulator::Schedule (MilliSeconds(2), &staApp::RequestId, this);
 }
 
 void staApp::RequestId ()
@@ -235,7 +242,7 @@ void staApp::UpdateId(Ptr<Socket> socket)
   m_id=boost::lexical_cast<uint32_t>(ostr.str ());
     // once id is updated, start association on second device
   ScheduleAssociation (1);
-
+  //PeriodicTx();
 
 }
 
@@ -252,7 +259,12 @@ void staApp::ScheduleTx (void)
 //    Time tNext(Seconds(tSec+1)); // start on the next second
 //    tNext+=MilliSeconds(m_nWifi*m_tslot );
 //    m_sendEvent = Simulator::Schedule (tNext - tNow, &staApp::SendPacket,this);
-    Time tNext (MilliSeconds(m_nWifi*m_tslot + 10));
+    Time tNext (MilliSeconds(0));
+    if (m_packetsSent==0)
+      tNext = MilliSeconds(m_id*m_tslot);
+    else
+      tNext = MilliSeconds(m_nWifi*m_tslot);
+
     Simulator::Schedule (tNext, &staApp::SendPacket,this);
 }
 
@@ -273,11 +285,12 @@ void staApp::SetSlotTime (uint32_t tslot)
   m_tslot = tslot;
 }
 
+
+
+
 int main (int argc, char *argv[])
 {
- //   bool verbose = true;
-    uint32_t nWifi = 2;
-    bool tracing = true;
+    uint32_t nWifi = 10;
 
 //    CommandLine cmd;
 //    cmd.AddValue ("nWifi", "Number of wifi STA devices", nWifi);
@@ -288,31 +301,10 @@ int main (int argc, char *argv[])
 
     Packet::EnablePrinting ();
 
-    // Check for valid number of csma or wifi nodes
-    // 250 should be enough, otherwise IP addresses
-    // soon become an issue
-//    if (nWifi > 250)
-//    {
-//        std::cout << "Too many wifi or csma nodes, no more than 250 each." << std::endl;
-//        return 1;
-//    }
 
-//    if (verbose)
-//    {
-//        LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
-//        LogComponentEnable ("UdpServer", LOG_LEVEL_INFO);
-//        LogComponentEnable ("StaWifiMac", LOG_LEVEL_INFO);
-        LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
-//    }
-
+    LogComponentEnable ("PacketSink", LOG_LEVEL_INFO);
     ns3::PacketMetadata::Enable();
 
-//  PointToPointHelper pointToPoint;
-//  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-//  pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
-
-//  NetDeviceContainer p2pDevices;
-//  p2pDevices = pointToPoint.Install (p2pNodes);
 
     NodeContainer wifiStaNodes;
     wifiStaNodes.Create (nWifi);
@@ -388,7 +380,7 @@ int main (int argc, char *argv[])
     Ptr<apApp> apApp1 = CreateObject<apApp>();
     wifiApNode.Get(0)->AddApplication(apApp1);
     apApp1->SetStartTime(Seconds(0));
-    apApp1->SetStopTime(Seconds(20));
+    apApp1->SetStopTime(Seconds(200));
 
     // Packet sink application for data tx on second channel
     uint16_t sinkPort = 9998;
@@ -396,7 +388,7 @@ int main (int argc, char *argv[])
     PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", sinkAddress);
     ApplicationContainer sinkApps = packetSinkHelper.Install (wifiApNode.Get (0));
     sinkApps.Start (Seconds (0));
-    sinkApps.Stop (Seconds (20));
+    sinkApps.Stop (Seconds (201));
     //
     uint32_t tslot = 50;
     for (uint32_t i=0; i<nWifi; i++)
@@ -404,11 +396,11 @@ int main (int argc, char *argv[])
         Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (i), apInterface.GetAddress(0), apInterface1.GetAddress(0), 0, 200, 20, nWifi);
         wifiStaNodes.Get (i)->AddApplication (app1);
         app1->SetSlotTime(tslot);
-        app1->SetStartTime (Seconds (1));
-        app1->SetStopTime (Seconds (20));
+        app1->SetStartTime (MilliSeconds (1000+i));
+        app1->SetStopTime (Seconds (200));
       }
 
-//    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0), apInterface.GetAddress(0), apInterface1.GetAddress(0), 11, 200, 20, nWifi);
+/*//    Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (0), apInterface.GetAddress(0), apInterface1.GetAddress(0), 11, 200, 20, nWifi);
 //    wifiStaNodes.Get (0)->AddApplication (app1);
 //    app1->SetSlotTime(tslot);
 //    app1->SetStartTime (Seconds (1));
@@ -419,22 +411,16 @@ int main (int argc, char *argv[])
 //    app2->SetSlotTime(tslot);
 //    app2->SetStartTime (Seconds (1));
 //    app2->SetStopTime (Seconds (20));
-
+*/
     Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
-    Simulator::Stop (Seconds (10.0));
-
-    if (tracing == true)
-    {
-//      pointToPoint.EnablePcapAll ("third");
-//      phy.EnablePcap ("third", apDevices.Get (0));
-//      csma.EnablePcap ("third", csmaDevices.Get (0), true);
-    }
+    Simulator::Stop (Seconds (201.0));
 
     Simulator::Run ();
     Simulator::Destroy ();
 
     uint64_t totalPacketsThrough = DynamicCast<PacketSink> (sinkApps.Get(0))->GetTotalRx ();
+//    std::cout<< DynamicCast<PacketSink> (sinkApps.Get(0))->GetAcceptedSockets().size()<<std::endl;
     std::cout<< totalPacketsThrough<<std::endl;
     return 0;
 }
