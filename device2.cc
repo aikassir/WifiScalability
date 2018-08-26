@@ -155,7 +155,7 @@ MyApp::ScheduleAssociation (void)
 {
     if (m_running)
     {
-        Time tNext (MilliSeconds(m_id+2));
+        Time tNext (MilliSeconds(2));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::StartAssociation, this);
     }
 //    NS_LOG_UNCOND("Association done");
@@ -166,7 +166,7 @@ MyApp::ScheduleTx (void)
 {
     if (m_running)
     {
-        Time tNext (MilliSeconds(m_nWifi*m_tslot + 10));
+        Time tNext (MilliSeconds(m_nWifi*m_tslot));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed,this);
     }
 }
@@ -209,7 +209,7 @@ main (int argc, char *argv[])
 {
   bool verbose = true;
 
-  uint32_t nWifi = 101;
+  uint32_t nWifi = 501;
   //bool tracing = true;
 
 //  CommandLine cmd;
@@ -292,11 +292,11 @@ main (int argc, char *argv[])
                                  "MinY", DoubleValue (0.0),
                                  "DeltaX", DoubleValue (0.5),
                                  "DeltaY", DoubleValue (1.0),
-                                 "GridWidth", UintegerValue (1),
+                                 "GridWidth", UintegerValue (20),
                                  "LayoutType", StringValue ("RowFirst"));
 
   mobility.SetMobilityModel ("ns3::RandomWalk2dMobilityModel",
-                             "Bounds", RectangleValue (Rectangle (-100, 100, -100, 100)));
+                             "Bounds", RectangleValue (Rectangle (0,1000, 0, 1000)));
   mobility.Install (wifiStaNodes);
 
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
@@ -313,7 +313,7 @@ main (int argc, char *argv[])
   Ipv4InterfaceContainer apInterface;
 
 
-  address.SetBase ("10.1.3.0", "255.255.255.0");
+  address.SetBase ("10.1.0.0", "255.255.248.0");
   wifiInterfaces = address.Assign (staDevices);
   apInterface = address.Assign (apDevices);
   Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
@@ -334,7 +334,7 @@ main (int argc, char *argv[])
 
   /**** OLD APPLICATION ****/
 
-    double tslot = 50; //
+    double tslot = 10; //
 
     // Create packet sink on destination
     uint16_t sinkPort = 8080;
@@ -342,7 +342,7 @@ main (int argc, char *argv[])
     PacketSinkHelper packetSinkHelper ("ns3::UdpSocketFactory", InetSocketAddress (apInterface.GetAddress (0), sinkPort));
     ApplicationContainer sinkApps = packetSinkHelper.Install (wifiApNode.Get (0));
     sinkApps.Start (Seconds (0.));
-    sinkApps.Stop (Seconds (20.));
+    sinkApps.Stop (Seconds (60.));
 
     //Create socket to be installed in app on setup on all transmitter devices
 //    Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (0), UdpSocketFactory::GetTypeId ());
@@ -351,11 +351,11 @@ main (int argc, char *argv[])
       {
         Ptr<Socket> ns3UdpSocket = Socket::CreateSocket (wifiStaNodes.Get (i), UdpSocketFactory::GetTypeId ());
         Ptr<MyApp> app1 = CreateObject<MyApp> (wifiStaNodes.Get (i),i+1);
-        app1->Setup(ns3UdpSocket, sinkAddress, 1000, 20, DataRate ("1Mbps"), nWifi-1);
+        app1->Setup(ns3UdpSocket, sinkAddress, 200, 2, DataRate ("1Mbps"), nWifi-1);
         wifiStaNodes.Get (i)->AddApplication (app1);
         app1->SetSlotTime(tslot);
-        app1->SetStartTime (Seconds (1));
-        app1->SetStopTime (Seconds (20));
+        app1->SetStartTime (MilliSeconds (1000+i));
+        app1->SetStopTime (Seconds (60));
       }
 
 //    for (uint32_t i=0; i<nWifi-1; i++)
@@ -369,7 +369,7 @@ main (int argc, char *argv[])
 //      NS_LOG_UNCOND("DataRate = 3Mbps");
 //    }
 
-  Simulator::Stop (Seconds (21.0));
+  Simulator::Stop (Seconds (61.0));
 
 //    if (tracing == true)
 //      {

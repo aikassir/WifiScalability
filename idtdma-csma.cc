@@ -166,7 +166,7 @@ MyApp::ScheduleTx (void)
 {
     if (m_running)
     {
-        Time tNext (MilliSeconds(m_nWifi*m_tslot + 10));
+        Time tNext (MilliSeconds(10000));
         m_sendEvent = Simulator::Schedule (tNext, &MyApp::SendPacketTimed,this);
     }
 }
