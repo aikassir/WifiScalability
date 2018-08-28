@@ -93,7 +93,7 @@ class staApp : public Application
 {
 public:
     staApp (Ptr<Node> node, Ipv4Address addr,Ipv4Address addr1, uint32_t id,  uint32_t packetSize, uint32_t nPackets, uint32_t nWifi);
-    void SetSlotTime(uint32_t tslot);
+    void SetSlotTime(double tslot);
     void SetCycle (uint32_t Tcycle);
 //    virtual ~staApp(){}
 
@@ -120,7 +120,7 @@ private:
     uint32_t m_nPackets;
     uint32_t m_packetsSent;
     uint32_t m_id;
-    uint32_t m_tslot;
+    double m_tslot;
     uint32_t m_nWifi;
     EventId m_sendEvent;
     bool m_running;
@@ -170,7 +170,8 @@ staApp::staApp (Ptr<Node> node, Ipv4Address addr,Ipv4Address addr1,uint32_t id, 
 void
 staApp::StartApplication (void)
 {
-    //RequestId ();
+  std::cout<<"START "<<m_id<<" "<<Simulator::Now()<<std::endl;
+  //RequestId ();
     ScheduleAssociation (0);
 //    ScheduleRequestId ();
 //    Time tstart = MilliSeconds(m_id*m_tslot);
@@ -190,6 +191,7 @@ staApp::StopApplication (void)
 
 void staApp::StartAssociation (int device)
 {
+  std::cout<<"SCHED "<<m_id<<" "<<Simulator::Now()<<std::endl;
     m_macs[device]->SetAttribute ("ActiveProbing",BooleanValue(true));
 //    if (device ==1)
 //      {
@@ -206,11 +208,11 @@ void staApp::ScheduleAssociation (int device)
 //    Simulator::Schedule (tNext - tNow, &staApp::StartAssociation, this, device);
 //    Time tNext (MilliSeconds(2));
     m_sendEvent = Simulator::Schedule (MilliSeconds(m_id*m_tslot), &staApp::StartAssociation, this,device);
-//    if (device ==1)
-//      {
-//        Time tNext (MilliSeconds(m_id+2));
-//        m_sendEvent = Simulator::Schedule (tNext, &staApp::StartAssociation, this,device);
-//      }
+    if (device ==1)
+      {
+        Time tNext (Seconds(m_Tcycle));
+        m_sendEvent = Simulator::Schedule (tNext, &staApp::StartAssociation, this,device);
+      }
 }
 
 void staApp::ScheduleRequestId()
@@ -220,11 +222,13 @@ void staApp::ScheduleRequestId()
 //    Time tNext(Seconds(tSec+1)); // start on the next second
 //    tNext+=MilliSeconds(m_id*m_tslot);
 //    Simulator::Schedule (tNext - tNow, &staApp::RequestId, this);
-      Simulator::Schedule (MilliSeconds(m_id*m_tslot), &staApp::RequestId, this);
+      Simulator::Schedule (Seconds(m_Tcycle), &staApp::RequestId, this);
 }
 
 void staApp::RequestId ()
 {
+  std::cout<<"REQU ID "<<m_id<<" "<<Simulator::Now()<<std::endl;
+
     Ptr<Packet> packet = Create<Packet> (64);
     uint16_t apPort = 9996;
     Address apAddress (InetSocketAddress (m_peer, apPort));
@@ -233,6 +237,8 @@ void staApp::RequestId ()
 
 void staApp::UpdateId(Ptr<Socket> socket)
 {
+  std::cout<<"UPD ID "<<m_id<<" "<<Simulator::Now()<<std::endl;
+
   Ptr<Packet> packet=socket->Recv ();
   std::ostringstream ostr;
   packet->CopyData(&ostr, packet->GetSize());
@@ -250,19 +256,19 @@ void staApp::ScheduleTx (void)
 //    double tSec=std::round(tNow.GetSeconds ());
 //    Time tNext(Seconds(tSec+1)); // start on the next second
 //    tNext+=MilliSeconds(m_nWifi*m_tslot );
-//    m_sendEvent = Simulator::Schedule (tNext - tNow, &staApp::SendPacket,this);
+    m_sendEvent = Simulator::Schedule (Seconds(m_Tcycle), &staApp::SendPacket,this);
 //    Time tNext (MilliSeconds(0));
-    if (m_packetsSent==0)
-        {
-            Time tNext =MilliSeconds(m_id*m_tslot );
-            m_sendEvent = Simulator::Schedule (tNext, &staApp::SendPacket,this);
-        }
-    else
-        {
-            //tNext = Seconds(m_Tcycle);
-            Time tNext(Seconds(m_Tcycle ));
-            m_sendEvent = Simulator::Schedule (tNext, &staApp::SendPacket,this);
-        }
+//    if (m_packetsSent==0)
+//        {
+//            Time tNext =MilliSeconds(m_id*m_tslot );
+//            m_sendEvent = Simulator::Schedule (tNext, &staApp::SendPacket,this);
+//        }
+//    else
+//        {
+//            Time tNext(MilliSeconds(m_nWifi*m_tslot ));
+//            Time tNext(Seconds(m_Tcycle));
+//            m_sendEvent = Simulator::Schedule (tNext, &staApp::SendPacket,this);
+//        }
 }
 
 void staApp::SendPacket (void)
@@ -277,7 +283,7 @@ void staApp::SendPacket (void)
     }
 }
 
-void staApp::SetSlotTime (uint32_t tslot)
+void staApp::SetSlotTime (double tslot)
 {
   m_tslot = tslot;
 }
@@ -297,7 +303,10 @@ static void ApPhyRxDrop(Ptr<const Packet> p)
 
 int main (int argc, char *argv[])
 {
-    uint32_t nWifi = 500;
+    uint32_t nWifi = 100;
+    double tslot = 100;
+    uint32_t Tcycle = 10;
+
 //    CommandLine cmd;
 //    cmd.AddValue ("nWifi", "Number of wifi STA devices", nWifi);
 //    cmd.AddValue ("verbose", "Tell echo applications to log if true", verbose);
@@ -334,7 +343,8 @@ int main (int argc, char *argv[])
     phy1.Set("ChannelNumber",UintegerValue(1));
 
     WifiHelper wifi;
-    wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
+    //wifi.SetStandard(WIFI_PHY_STANDARD_80211n_5GHZ);
+    wifi.SetRemoteStationManager ("ns3::ConstantRateWifiManager");
 
     WifiMacHelper mac;
     Ssid ssid = Ssid ("ns-3-ssid");
@@ -394,7 +404,6 @@ int main (int argc, char *argv[])
     wifiInterfaces1 = address.Assign (staDevices1);
 
     // app for request id on first channel
-    uint32_t Tcycle = 10;
 
     Ptr<apApp> apApp1 = CreateObject<apApp>();
     wifiApNode.Get(0)->AddApplication(apApp1);
@@ -414,7 +423,6 @@ int main (int argc, char *argv[])
     Ptr<WifiPhy> apPhy = apwifidev->GetMac()->GetWifiPhy();
     apPhy->TraceConnectWithoutContext("PhyRxDrop",MakeCallback(&ApPhyRxDrop));
 
-    uint32_t tslot = 20;
     for (uint32_t i=0; i<nWifi; i++)
       {
         Ptr<staApp> app1 = CreateObject<staApp> (wifiStaNodes.Get (i), apInterface.GetAddress(0), apInterface1.GetAddress(0), i, 200, 2, nWifi);
